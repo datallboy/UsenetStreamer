@@ -4,6 +4,11 @@
 
 UsenetStreamer is a Stremio addon that bridges a Usenet indexer manager (Prowlarr or NZBHydra) and NZBDav. It hosts no media itself; it simply orchestrates search and streaming through your existing Usenet stack. The addon searches Usenet indexers through the manager, queues NZB downloads in NZBDav, and exposes the resulting media as Stremio streams.
 
+## ☕ Buy Me a Coffee
+
+If this project saves you time or money, please consider supporting it: **[buymeacoffee.com/gaikwadsank](https://buymeacoffee.com/gaikwadsank)**.
+
+
 ## Features
 
 - ID-aware search plans (IMDb/TMDB/TVDB) with automatic metadata enrichment.
