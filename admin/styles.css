@@ -145,6 +145,12 @@ select:focus {
   font-weight: 600;
 }
 
+.field-hint {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: #9caec0;
+}
+
 .checkbox {
   flex-direction: row !important;
   align-items: center;

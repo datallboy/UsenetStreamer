@@ -46,13 +46,20 @@
               </select>
             </label>
             <label>Manager URL
-              <input name="INDEXER_MANAGER_URL" type="url" placeholder="http://localhost:9696" />
+            <label>Preferred Size (GB)
+              <input name="NZB_TRIAGE_PREFERRED_SIZE_GB" type="number" min="0" step="0.1" placeholder="20" />
             </label>
+            <label>Paid Indexers (comma separated)
+              <input name="NZB_TRIAGE_PRIORITY_INDEXERS" type="text" placeholder="9,33" />
+              <span class="field-hint">Use indexer IDs or names you want triage to favor first.</span>
+            </label>
+            <label>Max Candidates
             <label>API Key
               <input name="INDEXER_MANAGER_API_KEY" type="text" autocomplete="off" />
             </label>
-            <label>Indexer IDs (comma separated)
-              <input name="INDEXER_MANAGER_INDEXERS" type="text" placeholder="-1 or sci-fi,4k" />
+              <label>Indexer IDs / Names
+                <input name="INDEXER_MANAGER_INDEXERS" type="text" placeholder="-1 or sci-fi,4k" />
+                <span class="field-hint">For Prowlarr use numeric IDs (or -1 for all). For NZBHydra provide indexer names, comma separated.</span>
             </label>
             <label class="checkbox">
               <input name="INDEXER_MANAGER_STRICT_ID_MATCH" type="checkbox" />
