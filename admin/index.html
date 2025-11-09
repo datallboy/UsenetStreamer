@@ -16,9 +16,10 @@
     <section class="card">
       <h2>Authentication</h2>
       <p class="hint">Enter the shared addon token (the same one you use in the manifest URL). It will be stored locally in your browser.</p>
+      <p class="warning">Treat this token like a password. If you expose the token and your public addon URL, anyone can open the admin panel and read or overwrite your credentials.</p>
       <div class="field-row">
         <label for="tokenInput">Addon Token</label>
-        <input id="tokenInput" type="text" autocomplete="off" />
+        <input id="tokenInput" type="password" autocomplete="off" />
       </div>
       <button id="loadConfig" class="primary">Load Configuration</button>
       <p id="authError" class="error hidden"></p>
@@ -49,7 +50,7 @@
               <input name="INDEXER_MANAGER_URL" type="url" placeholder="http://localhost:9696" />
             </label>
             <label>API Key
-              <input name="INDEXER_MANAGER_API_KEY" type="text" autocomplete="off" />
+              <input name="INDEXER_MANAGER_API_KEY" type="password" autocomplete="new-password" />
             </label>
             <label>Indexer IDs / Names
               <input name="INDEXER_MANAGER_INDEXERS" type="text" placeholder="-1 or sci-fi,4k" />
@@ -73,7 +74,7 @@
               <input name="NZBDAV_URL" type="url" placeholder="http://localhost:3000" />
             </label>
             <label>NZBDav API Key
-              <input name="NZBDAV_API_KEY" type="text" autocomplete="off" />
+              <input name="NZBDAV_API_KEY" type="password" autocomplete="new-password" />
             </label>
             <label>WebDAV URL
               <input name="NZBDAV_WEBDAV_URL" type="url" placeholder="http://localhost:3000" />
@@ -138,7 +139,7 @@
               <input name="ADDON_BASE_URL" type="url" placeholder="https://example.com" />
             </label>
             <label>Shared Secret
-              <input name="ADDON_SHARED_SECRET" type="text" autocomplete="off" />
+              <input name="ADDON_SHARED_SECRET" type="password" autocomplete="new-password" />
             </label>
           </div>
         </section>
