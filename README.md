@@ -4,7 +4,7 @@
 
 UsenetStreamer is a Stremio addon that bridges a Usenet indexer manager (Prowlarr or NZBHydra) and NZBDav. It hosts no media itself; it simply orchestrates search and streaming through your existing Usenet stack. The addon searches Usenet indexers through the manager, queues NZB downloads in NZBDav, and exposes the resulting media as Stremio streams.
 
-<h2 align="center">☕ Buy Me a Coffee</h2>
+<h1 align="center" style="font-size:3rem; margin-bottom:0.25em;">☕ Buy Me a Coffee</h1>
 
 <p align="center">
    <strong><a href="https://buymeacoffee.com/gaikwadsank">Buy me a coffee to keep this addon moving!</a></strong>
@@ -126,6 +126,6 @@ Tips:
 - If you deploy behind Cloudflare or another CDN, ensure WebDAV/body sizes are allowed and HTTPS certificates stay valid.
 - Finally, add `https://myusenet.duckdns.org/super-secret-token/manifest.json` (replace with your domain + secret) to Stremio’s addon catalog. Use straight HTTPS—the addon will not show up over HTTP.
 
-<p align="center">
-   <strong><a href="https://buymeacoffee.com/gaikwadsank">☕ Buy me a coffee to support ongoing development!</a></strong>
-</p>
+<h1 align="center" style="font-size:2.5rem; margin-top:2.5em;">
+   <a href="https://buymeacoffee.com/gaikwadsank">☕ Buy me a coffee to support ongoing development!</a>
+</h1>
