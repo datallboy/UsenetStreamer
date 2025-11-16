@@ -17,6 +17,10 @@ const {
 } = require('./connectionTests');
 const { triageAndRank } = require('./nzbTriageRunner');
 const { preWarmNntpPool } = require('./nzbTriage');
+const {
+  getPublishMetadataFromResult,
+  areReleasesWithinDays,
+} = require('./publishInfo');
 
 runtimeEnv.applyRuntimeEnv();
 
@@ -318,7 +322,7 @@ if (TRIAGE_REUSE_POOL && TRIAGE_NNTP_CONFIG) {
     nntpKeepAliveMs: TRIAGE_NNTP_KEEP_ALIVE_MS,
   })
     .then(() => {
-      console.log('[NZB TRIAGE] Pre-warmed NNTP pool with shared configuration');
+      // console.log('[NZB TRIAGE] Pre-warmed NNTP pool with shared configuration');
     })
     .catch((err) => {
       console.warn('[NZB TRIAGE] Unable to pre-warm NNTP pool', err?.message || err);
@@ -648,6 +652,9 @@ function sanitizeDecisionForCache(decision) {
     normalizedTitle: decision.normalizedTitle || null,
     indexerId: decision.indexerId || null,
     indexerName: decision.indexerName || null,
+    publishDateMs: decision.publishDateMs ?? null,
+    publishDateIso: decision.publishDateIso || null,
+    ageDays: decision.ageDays ?? null,
   };
 }
 
@@ -662,6 +669,9 @@ function serializeFinalNzbResults(results) {
     guid: result.guid,
     _sourceType: result._sourceType,
     age: result.age,
+    ageDays: result.ageDays,
+    publishDateMs: result.publishDateMs,
+    publishDateIso: result.publishDateIso,
   }));
 }
 
@@ -743,6 +753,7 @@ function ensureAddonConfigured() {
 const isUsingProwlarr = () => INDEXER_MANAGER === 'prowlarr';
 const isUsingNzbhydra = () => INDEXER_MANAGER === 'nzbhydra';
 const PROWLARR_SEARCH_LIMIT = 1000;
+const TRIAGE_DECISION_SHARING_WINDOW_DAYS = 14;
 
 function buildProwlarrIndexerIdList() {
   if (!INDEXER_MANAGER_INDEXERS) return null;
@@ -789,6 +800,38 @@ async function executeProwlarrSearch(plan) {
     timeout: 60000
   });
   return Array.isArray(response.data) ? response.data : [];
+}
+
+function annotateNzbResult(result) {
+  const publishMeta = getPublishMetadataFromResult(result);
+  const ageDays = publishMeta.ageDays ?? (Number.isFinite(result.age) ? Number(result.age) : null);
+  const publishDateMs = publishMeta.publishDateMs ?? result.publishDateMs ?? null;
+  const publishDateIso = publishMeta.publishDateIso || result.publishDateIso || result.publishDate || result.publish_date || null;
+  const resolvedAge = Number.isFinite(result.age)
+    ? Number(result.age)
+    : (ageDays !== null ? Math.round(ageDays) : undefined);
+
+  return {
+    ...result,
+    publishDateMs,
+    publishDateIso,
+    ageDays,
+    age: resolvedAge,
+  };
+}
+
+function canShareDecision(decisionPublishDateMs, candidatePublishDateMs) {
+  if (!TRIAGE_DECISION_SHARING_WINDOW_DAYS || TRIAGE_DECISION_SHARING_WINDOW_DAYS <= 0) {
+    return true;
+  }
+  if (!decisionPublishDateMs || !candidatePublishDateMs) {
+    return true;
+  }
+  return areReleasesWithinDays(
+    decisionPublishDateMs,
+    candidatePublishDateMs,
+    TRIAGE_DECISION_SHARING_WINDOW_DAYS,
+  );
 }
 
 function mapHydraSearchType(planType) {
@@ -1009,13 +1052,31 @@ function normalizeHydraResults(data) {
       guidValue = guidRaw._ || guidRaw['#text'] || guidRaw.url || guidRaw.href || null;
     }
 
+    const publishDateCandidate = resolveFirst(
+      item.pubDate,
+      item.pubdate,
+      item.PublishDate,
+      attrMap.pubdate,
+      attrMap['pub-date'],
+      attrMap.publishdate,
+      attrMap['publish-date'],
+      attrMap.usenetdate,
+      attrMap['usenet-date'],
+    );
     results.push({
       title: title || downloadUrl,
       downloadUrl,
       guid: guidValue,
       size: Number.isFinite(parsedSize) ? parsedSize : undefined,
       indexer,
-      indexerId
+      indexerId,
+      publishDate: publishDateCandidate || undefined,
+      pubDate: publishDateCandidate || undefined,
+      publish_date: attrMap.publishdate || undefined,
+      age: resolveFirst(attrMap.age, attrMap.age_days, attrMap['age-days']),
+      ageDays: resolveFirst(attrMap.age_days, attrMap['age-days']),
+      ageHours: resolveFirst(attrMap.agehours, attrMap['age-hours']),
+      ageMinutes: resolveFirst(attrMap.ageminutes, attrMap['age-minutes']),
     });
   }
 
@@ -1459,6 +1520,8 @@ function buildTriageTitleMap(decisions) {
         normalizedTitle,
         title: decision.title || null,
         sourceDownloadUrl: downloadUrl,
+        publishDateMs: decision.publishDateMs ?? null,
+        ageDays: decision.ageDays ?? null,
       });
     }
   });
@@ -2655,7 +2718,10 @@ async function streamHandler(req, res) {
           }
           return true;
         })
-        .map((result) => ({ ...result, _sourceType: 'nzb' }));
+        .map((result) => {
+          const annotated = annotateNzbResult(result);
+          return { ...annotated, _sourceType: 'nzb' };
+        });
 
   console.log(`${INDEXER_LOG_PREFIX} Final NZB selection: ${finalNzbResults.length} results`);
     }
@@ -2691,7 +2757,11 @@ async function streamHandler(req, res) {
       const normalizedTitle = normalizeReleaseTitle(candidate.title);
       if (normalizedTitle) {
         const derived = triageTitleMap.get(normalizedTitle);
-        if (derived && allowedCacheStatuses.has(derived.status)) {
+        if (
+          derived
+          && allowedCacheStatuses.has(derived.status)
+          && canShareDecision(derived.publishDateMs, candidate.publishDateMs)
+        ) {
           return true;
         }
       }
@@ -2733,7 +2803,7 @@ async function streamHandler(req, res) {
             triageDecisions.set(downloadUrl, decision);
           });
           triageTitleMap = buildTriageTitleMap(triageDecisions);
-          console.log(`[NZB TRIAGE] Evaluated ${triageOutcome.evaluatedCount}/${triageOutcome.candidatesConsidered} candidate NZBs in ${triageOutcome.elapsedMs} ms (timedOut=${triageOutcome.timedOut})`);
+          // console.log(`[NZB TRIAGE] Evaluated ${triageOutcome.evaluatedCount}/${triageOutcome.candidatesConsidered} candidate NZBs in ${triageOutcome.elapsedMs} ms (timedOut=${triageOutcome.timedOut})`);
           if (triageDecisions.size > 0) {
             const statusCounts = {};
             let loggedSamples = 0;
@@ -2742,23 +2812,23 @@ async function streamHandler(req, res) {
               const status = decision?.status || 'unknown';
               statusCounts[status] = (statusCounts[status] || 0) + 1;
               if (loggedSamples < sampleLimit) {
-                console.log('[NZB TRIAGE] Decision sample', {
+                /* console.log('[NZB TRIAGE] Decision sample', {
                   status,
                   blockers: decision?.blockers || [],
                   warnings: decision?.warnings || [],
                   fileCount: decision?.fileCount ?? null,
                   nzbIndex: decision?.nzbIndex ?? null,
                   downloadUrl
-                });
+                }); */
                 loggedSamples += 1;
               }
             });
             if (triageDecisions.size > sampleLimit) {
-              console.log(`[NZB TRIAGE] (${triageDecisions.size - sampleLimit}) additional decisions omitted from sample log`);
+              // console.log(`[NZB TRIAGE] (${triageDecisions.size - sampleLimit}) additional decisions omitted from sample log`);
             }
-            console.log('[NZB TRIAGE] Decision status breakdown', statusCounts);
+            // console.log('[NZB TRIAGE] Decision status breakdown', statusCounts);
           } else {
-            console.log('[NZB TRIAGE] No decisions were produced by the triage runner');
+            // console.log('[NZB TRIAGE] No decisions were produced by the triage runner');
           }
         } catch (triageError) {
           console.warn(`[NZB TRIAGE] Health check failed: ${triageError.message}`);
@@ -2859,13 +2929,16 @@ async function streamHandler(req, res) {
         const historySlot = normalizedTitle ? historyByTitle.get(normalizedTitle) : null;
         const isInstant = cacheEntry?.status === 'ready' || Boolean(historySlot);
 
-  const directTriageInfo = triageDecisions.get(result.downloadUrl);
-  const fallbackTitleKey = normalizedTitle;
-  const fallbackTriageInfo = !directTriageInfo && fallbackTitleKey ? triageTitleMap.get(fallbackTitleKey) : null;
-  const triageInfo = directTriageInfo || fallbackTriageInfo || null;
-  const triageApplied = Boolean(directTriageInfo);
-  const triageDerivedFromTitle = Boolean(!directTriageInfo && fallbackTriageInfo);
-  const triageStatus = triageInfo?.status || (triageApplied ? 'unknown' : 'not-run');
+        const directTriageInfo = triageDecisions.get(result.downloadUrl);
+        const fallbackTitleKey = normalizedTitle;
+        const fallbackTriageInfo = !directTriageInfo && fallbackTitleKey ? triageTitleMap.get(fallbackTitleKey) : null;
+        const fallbackAllowed = fallbackTriageInfo
+          ? canShareDecision(fallbackTriageInfo.publishDateMs, result.publishDateMs)
+          : false;
+        const triageInfo = directTriageInfo || (fallbackAllowed ? fallbackTriageInfo : null);
+        const triageApplied = Boolean(directTriageInfo);
+        const triageDerivedFromTitle = Boolean(!directTriageInfo && fallbackAllowed && fallbackTriageInfo);
+        const triageStatus = triageInfo?.status || (triageApplied ? 'unknown' : 'not-run');
         let triagePriority = 1;
         let triageTag = null;
 
@@ -2887,7 +2960,7 @@ async function streamHandler(req, res) {
           if (triageOutcome?.timedOut) triageTag = '⏱️';
         }
 
-  const archiveFindings = triageInfo?.archiveFindings || [];
+      const archiveFindings = triageInfo?.archiveFindings || [];
         const archiveStatuses = archiveFindings.map((finding) => String(finding?.status || '').toLowerCase());
         const archiveFailureTokens = new Set([
           'rar-compressed',
@@ -2954,7 +3027,7 @@ async function streamHandler(req, res) {
         }
 
         if (triageApplied && triageLogCount < 10) {
-          console.log('[NZB TRIAGE] Stream candidate status', {
+          /* console.log('[NZB TRIAGE] Stream candidate status', {
             title: result.title,
             downloadUrl: result.downloadUrl,
             status: triageStatus,
@@ -2966,12 +3039,12 @@ async function streamHandler(req, res) {
             archiveCheckStatus,
             missingArticlesStatus,
             timedOut: Boolean(triageOutcome?.timedOut)
-          });
+          }); */
           triageLogCount += 1;
         } else if (!triageApplied) {
           // Skip logging for streams that were never part of the triage batch
         } else if (!triageLogSuppressed) {
-          console.log('[NZB TRIAGE] Additional stream triage logs suppressed');
+          // console.log('[NZB TRIAGE] Additional stream triage logs suppressed');
           triageLogSuppressed = true;
         }
 

@@ -193,6 +193,11 @@ async function triageAndRank(nzbResults, options = {}) {
       decision.normalizedTitle = candidateInfo.normalizedTitle || null;
       decision.indexerId = candidateInfo.indexerId || null;
       decision.indexerName = candidateInfo.indexerName || null;
+      if (candidateInfo.result) {
+        decision.publishDateMs = candidateInfo.result.publishDateMs ?? decision.publishDateMs ?? null;
+        decision.publishDateIso = candidateInfo.result.publishDateIso ?? decision.publishDateIso ?? null;
+        decision.ageDays = candidateInfo.result.ageDays ?? decision.ageDays ?? null;
+      }
     } else {
       decision.title = decision.title ?? null;
       decision.normalizedTitle = decision.normalizedTitle ?? null;
