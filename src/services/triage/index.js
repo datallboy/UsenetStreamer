@@ -361,8 +361,8 @@ async function analyzeSingleNzb(raw, ctx) {
       if (ctx.nntpError) warnings.add(`nntp-error:${ctx.nntpError.code ?? ctx.nntpError.message}`);
       else warnings.add('nntp-disabled');
     } else if (uniqueSegments.length > 0) {
-      const statSampleCount = Math.max(1, Math.floor(ctx.config?.statSampleCount ?? 1));
-      const sampledSegments = pickRandomElements(uniqueSegments, statSampleCount);
+      const fallbackSampleCount = Math.max(1, Math.floor(ctx.config?.archiveSampleCount ?? 1));
+      const sampledSegments = pickRandomElements(uniqueSegments, fallbackSampleCount);
       await Promise.all(sampledSegments.map(async ({ segmentId, file }) => {
         try {
           await statSegment(ctx.nntpPool, segmentId);
@@ -471,21 +471,34 @@ async function analyzeSingleNzb(raw, ctx) {
       await Promise.all(primarySamples.map((segment) => runStatCheck(primaryArchive, segment)));
     }
 
-    const archivesWithSegments = archiveCandidates.filter((archive) => archive.segments.length > 0 && archive !== primaryArchive);
-      const archiveSampleCount = Math.max(1, Math.floor(ctx.config?.archiveSampleCount ?? 1));
-        const sampleArchives = pickRandomElements(
-          archivesWithSegments.filter((archive) => {
-            const segmentId = archive.segments[0]?.id;
-            return segmentId && !checkedSegments.has(segmentId);
-          }),
-          archiveSampleCount,
-        );
+    const archiveSampleCount = Math.max(0, Math.floor(ctx.config?.archiveSampleCount ?? 0));
+    if (archiveSampleCount > 0) {
+      const primaryKey = canonicalArchiveKey(primaryArchive?.filename || primaryArchive?.subject || '');
+      const candidateArchives = archiveCandidates.filter((archive) => {
+        if (!archive?.segments?.length) return false;
+        const key = canonicalArchiveKey(archive.filename || archive.subject || '');
+        if (primaryKey && key === primaryKey) return false;
+        if (!archive.segments.some((segment) => segment?.id && !checkedSegments.has(segment.id))) return false;
+        return true;
+      });
 
-        await Promise.all(sampleArchives.map(async (archive) => {
-          const segment = archive.segments.find((entry) => entry?.id && !checkedSegments.has(entry.id));
-          if (!segment) return;
-          await runStatCheck(archive, segment);
-        }));
+      const uniqueCandidates = [];
+      const seenArchiveKeys = new Set();
+      candidateArchives.forEach((archive) => {
+        const key = canonicalArchiveKey(archive.filename || archive.subject || '');
+        if (!key || seenArchiveKeys.has(key)) return;
+        seenArchiveKeys.add(key);
+        uniqueCandidates.push(archive);
+      });
+
+      const sampleArchives = pickRandomElements(uniqueCandidates, archiveSampleCount);
+
+      await Promise.all(sampleArchives.map(async (archive) => {
+        const segment = archive.segments.find((entry) => entry?.id && !checkedSegments.has(entry.id));
+        if (!segment) return;
+        await runStatCheck(archive, segment);
+      }));
+    }
   }
   if (!storedArchiveFound && blockers.size === 0) warnings.add('rar-m0-unverified');
 
@@ -705,10 +718,7 @@ function dedupeArchiveCandidates(archives) {
 
 function canonicalArchiveKey(name) {
   if (!name) return null;
-  let key = name.toLowerCase();
-  key = key.replace(/\.part\d+\.rar$/i, '.rar');
-  key = key.replace(/\.r\d{2}$/i, '.rar');
-  return key;
+  return name.toLowerCase();
 }
 
 function selectArchiveForInspection(archives) {
