@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { triageNzbs } = require('./index');
+const { getRandomUserAgent } = require('../../utils/userAgent');
 
 const DEFAULT_TIME_BUDGET_MS = 40000;
 const DEFAULT_MAX_CANDIDATES = 25;
@@ -301,7 +302,7 @@ async function triageAndRank(nzbResults, options = {}) {
           signal: abortController.signal,
           headers: {
             Accept: 'application/x-nzb,text/xml;q=0.9,*/*;q=0.8',
-            'User-Agent': 'UsenetStreamer-Triage',
+            'User-Agent': getRandomUserAgent(),
           },
           transitional: { silentJSONParsing: true, forcedJSONParsing: false },
         }).finally(() => {

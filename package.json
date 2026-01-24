@@ -21,6 +21,7 @@
     "parse-torrent-title": "^2.1.0",
     "streamsearch": "^0.1.2",
     "stremio-addon-sdk": "^1.6.10",
+    "user-agents": "^1.1.314",
     "webdav": "^5.6.0",
     "xml2js": "^0.6.2"
   }
