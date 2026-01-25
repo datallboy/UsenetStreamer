@@ -2621,13 +2621,10 @@ async function streamHandler(req, res) {
             filename: result.title || undefined,
           };
         } else {
-          // NZBDav mode: existing WebDAV-based streaming
+          // NZBDav mode: WebDAV-based streaming
           behaviorHints = {
             notWebReady: true,
-            externalPlayer: {
-              isRequired: false,
-              name: 'NZBDav Instant Stream'
-            }
+            filename: result.title || undefined,
           };
           if (isInstant) {
             behaviorHints.cached = true;
