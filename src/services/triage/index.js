@@ -459,7 +459,9 @@ async function analyzeSingleNzb(raw, ctx) {
     }
   }
 
-  if (ctx.nntpPool && storedArchiveFound && blockers.size === 0) {
+  // Run STAT sampling for any archive inspection (including 7z) to detect missing articles
+  const archiveInspected = Boolean(primaryArchive);
+  if (ctx.nntpPool && archiveInspected && blockers.size === 0) {
     const extraStatChecks = Math.max(0, Math.floor(ctx.config?.statSampleCount ?? 0));
     if (extraStatChecks > 0 && primaryArchive?.segments?.length) {
       const availablePrimarySegments = primaryArchive.segments

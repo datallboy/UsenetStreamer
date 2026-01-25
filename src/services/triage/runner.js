@@ -116,20 +116,31 @@ function summarizeDecision(decision) {
   const warnings = Array.isArray(decision?.warnings) ? decision.warnings : [];
   const archiveFindings = Array.isArray(decision?.archiveFindings) ? decision.archiveFindings : [];
 
+  // Check if we have a 7z that couldn't be verified (untested compression)
+  const hasSevenZipUntested = archiveFindings.some((finding) => {
+    const label = String(finding?.status || '').toLowerCase();
+    return label === 'sevenzip-untested';
+  }) || warnings.some((warning) => String(warning || '').toLowerCase().includes('sevenzip-untested'));
+
   let status = 'blocked';
   if (decision?.decision === 'accept' && blockers.length === 0) {
-    const positiveFinding = archiveFindings.some((finding) => {
-      const label = String(finding?.status || '').toLowerCase();
-      return label === 'rar-stored' || label === 'sevenzip-stored' || label === 'segment-ok';
-    });
-    if (positiveFinding) {
-      status = 'verified';
+    // For 7z-untested, always mark as unverified_7z regardless of segment-ok findings
+    if (hasSevenZipUntested) {
+      status = 'unverified_7z';
     } else {
-      status = 'unverified';
+      const positiveFinding = archiveFindings.some((finding) => {
+        const label = String(finding?.status || '').toLowerCase();
+        return label === 'rar-stored' || label === 'sevenzip-stored' || label === 'segment-ok';
+      });
+      if (positiveFinding) {
+        status = 'verified';
+      } else {
+        status = 'unverified';
+      }
     }
   }
 
-  // Flag unverified outcomes that are 7z-only so downstream caching can treat them as complete
+  // Flag other unverified outcomes that are 7z-only so downstream caching can treat them as complete
   if (status === 'unverified') {
     const sevenZipFlag = archiveFindings.some((finding) => {
       const label = String(finding?.status || '').toLowerCase();
