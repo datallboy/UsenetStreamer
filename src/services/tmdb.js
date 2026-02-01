@@ -283,6 +283,7 @@ async function getDetails(tmdbId, mediaType, language) {
       title: data.title || data.name,
       originalTitle: data.original_title || data.original_name,
       originalLanguage: data.original_language,
+      releaseYear: (data.release_date || data.first_air_date || '').substring(0, 4),
       alternativeTitles: [],
       translations: [],
     };
@@ -313,33 +314,90 @@ async function getDetails(tmdbId, mediaType, language) {
 }
 
 /**
+ * Get external IDs (IMDb/TVDB) from a TMDb ID
+ */
+async function getExternalIds(tmdbId, mediaType) {
+  if (!tmdbId || !mediaType) return null;
+  const cacheKey = getCacheKey('external', `${mediaType}/${tmdbId}`, null);
+  const cached = getFromCache(cacheKey);
+  if (cached !== null) {
+    return cached;
+  }
+
+  try {
+    const endpoint = mediaType === 'movie' ? `/movie/${tmdbId}/external_ids` : `/tv/${tmdbId}/external_ids`;
+    const data = await tmdbRequest(endpoint);
+    if (!data) {
+      setInCache(cacheKey, null);
+      return null;
+    }
+
+    const parsed = {
+      imdbId: data.imdb_id || null,
+      tvdbId: data.tvdb_id ? String(data.tvdb_id) : null,
+    };
+
+    setInCache(cacheKey, parsed);
+    return parsed;
+  } catch (error) {
+    console.error(`[TMDB] getExternalIds error for ${mediaType}/${tmdbId}:`, error.message);
+    return null;
+  }
+}
+
+/**
  * Get multiple localized titles for search from TMDb
  * @param {object} options
  * @param {string} options.imdbId - IMDb ID
  * @param {string} options.type - 'movie' or 'series'
  * @returns {Promise<object>} - { tmdbId, mediaType, originalTitle, titles: [{language, title, year}], year }
  */
-async function getMetadataAndTitles({ imdbId, type }) {
+async function getMetadataAndTitles({ imdbId, tmdbId, type }) {
   if (!isConfigured()) {
     return null;
   }
 
-  if (!imdbId) {
-    console.log('[TMDB] No IMDb ID provided for metadata fetch');
+  if (!imdbId && !tmdbId) {
+    console.log('[TMDB] No IMDb/TMDb ID provided for metadata fetch');
     return null;
   }
 
-  console.log(`[TMDB] Fetching metadata and titles for ${imdbId}`);
+  const usingImdb = Boolean(imdbId);
+  const sourceLabel = usingImdb ? imdbId : `tmdb:${tmdbId}`;
+  console.log(`[TMDB] Fetching metadata and titles for ${sourceLabel}`);
 
-  // Step 1: Find TMDb ID from IMDb ID
-  const findResult = await findByExternalId(imdbId, 'imdb_id');
-  if (!findResult) {
-    console.log(`[TMDB] No TMDb match found for ${imdbId}`);
-    return null;
+  let resolvedTmdbId = tmdbId ? String(tmdbId) : null;
+  let mediaType = null;
+  let originalTitle = null;
+  let originalLanguage = null;
+  let releaseYear = null;
+
+  if (usingImdb && !resolvedTmdbId) {
+    // Step 1: Find TMDb ID from IMDb ID
+    const findResult = await findByExternalId(imdbId, 'imdb_id');
+    if (!findResult) {
+      console.log(`[TMDB] No TMDb match found for ${imdbId}`);
+      return null;
+    }
+
+    resolvedTmdbId = String(findResult.tmdbId);
+    mediaType = findResult.mediaType;
+    originalTitle = findResult.originalTitle;
+    originalLanguage = findResult.originalLanguage;
+    releaseYear = findResult.releaseYear;
+    console.log(`[TMDB] Found TMDb ID ${resolvedTmdbId} (${mediaType}), original: "${originalTitle}" [${originalLanguage}], year: ${releaseYear}`);
+  } else {
+    mediaType = type === 'series' ? 'tv' : 'movie';
+    const details = await getDetails(resolvedTmdbId, mediaType, 'en-US');
+    if (!details) {
+      console.log(`[TMDB] No TMDb details found for ${resolvedTmdbId}`);
+      return null;
+    }
+    originalTitle = details.originalTitle || details.title;
+    originalLanguage = details.originalLanguage || 'en';
+    releaseYear = details.releaseYear || null;
+    console.log(`[TMDB] Using TMDb ID ${resolvedTmdbId} (${mediaType}), original: "${originalTitle}" [${originalLanguage}], year: ${releaseYear}`);
   }
-
-  const { tmdbId, mediaType, originalTitle, originalLanguage, releaseYear } = findResult;
-  console.log(`[TMDB] Found TMDb ID ${tmdbId} (${mediaType}), original: "${originalTitle}" [${originalLanguage}], year: ${releaseYear}`);
 
   const titles = [];
   const seenTitles = new Set();
@@ -392,7 +450,7 @@ async function getMetadataAndTitles({ imdbId, type }) {
   // Step 3: Fetch all languages in parallel
   const fetchPromises = languagesToFetch.map(async (language) => {
     try {
-      const details = await getDetails(tmdbId, mediaType, language);
+      const details = await getDetails(resolvedTmdbId, mediaType, language);
       if (details?.title) {
         const normalizedTitle = details.title.trim();
         if (normalizedTitle) {
@@ -420,8 +478,8 @@ async function getMetadataAndTitles({ imdbId, type }) {
     }
   });
 
-  // Step 5: Always include original title if different from fetched one
-  if (originalTitle && !seenTitles.has(originalTitle.toLowerCase())) {
+  // Step 5: Include original title only when not in english-only mode
+  if (TMDB_SEARCH_MODE !== 'english_only' && originalTitle && !seenTitles.has(originalTitle.toLowerCase())) {
     seenTitles.add(originalTitle.toLowerCase());
     titles.push({
       language: originalLanguage,
@@ -432,7 +490,7 @@ async function getMetadataAndTitles({ imdbId, type }) {
   }
 
   return {
-    tmdbId,
+    tmdbId: resolvedTmdbId,
     mediaType,
     originalTitle,
     originalLanguage,
@@ -584,6 +642,7 @@ module.exports = {
   getConfig,
   findByExternalId,
   getDetails,
+  getExternalIds,
   getMetadataAndTitles,
   getLocalizedTitle,
   normalizeToAscii,

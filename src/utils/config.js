@@ -155,6 +155,31 @@ function resolvePreferredLanguage(value, fallback = '') {
   return fallback;
 }
 
+function resolveLanguageLabel(value) {
+  if (value === undefined || value === null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  const normalized = raw.toLowerCase();
+  const canonical = LANGUAGE_ALIAS_MAP.get(normalized)
+    || LANGUAGE_ALIAS_MAP.get(normalized.split(/[-_]/)[0]);
+  return canonical || raw;
+}
+
+function resolveLanguageLabels(values) {
+  if (!Array.isArray(values)) return [];
+  const labels = [];
+  const seen = new Set();
+  values.forEach((value) => {
+    const label = resolveLanguageLabel(value);
+    if (!label) return;
+    const key = label.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    labels.push(label);
+  });
+  return labels;
+}
+
 function toSizeBytesFromGb(value) {
   const numeric = toFiniteNumber(value, null);
   if (!Number.isFinite(numeric) || numeric <= 0) return null;
@@ -189,6 +214,8 @@ module.exports = {
   normalizeSortMode,
   resolvePreferredLanguages,
   resolvePreferredLanguage,
+  resolveLanguageLabel,
+  resolveLanguageLabels,
   toSizeBytesFromGb,
   collectConfigValues,
   computeManifestUrl,

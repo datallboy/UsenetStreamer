@@ -1,6 +1,7 @@
 // Helper utilities for sorting, filtering, and processing results
 const { parseReleaseMetadata } = require('../services/metadata/releaseParser');
 const { normalizeReleaseTitle } = require('./parsers');
+const { resolveLanguageLabel } = require('./config');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -164,7 +165,7 @@ function gatherResultLanguages(result) {
   if (result.language) collection.push(result.language);
   if (Array.isArray(result.languages)) collection.push(...result.languages);
   return collection
-    .map((lang) => (lang === undefined || lang === null ? '' : String(lang).trim()))
+    .map((lang) => resolveLanguageLabel(lang))
     .filter((lang) => lang.length > 0);
 }
 

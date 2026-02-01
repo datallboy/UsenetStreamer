@@ -33,7 +33,7 @@ const cache = require('./src/cache');
 const { ensureSharedSecret } = require('./src/middleware/auth');
 const newznabService = require('./src/services/newznab');
 const easynewsService = require('./src/services/easynews');
-const { toFiniteNumber, toPositiveInt, toBoolean, parseCommaList, parsePathList, normalizeSortMode, resolvePreferredLanguages, toSizeBytesFromGb, collectConfigValues, computeManifestUrl, stripTrailingSlashes, decodeBase64Value } = require('./src/utils/config');
+const { toFiniteNumber, toPositiveInt, toBoolean, parseCommaList, parsePathList, normalizeSortMode, resolvePreferredLanguages, resolveLanguageLabel, resolveLanguageLabels, toSizeBytesFromGb, collectConfigValues, computeManifestUrl, stripTrailingSlashes, decodeBase64Value } = require('./src/utils/config');
 const { normalizeReleaseTitle, parseRequestedEpisode, isVideoFileName, fileMatchesEpisode, normalizeNzbdavPath, inferMimeType, normalizeIndexerToken, nzbMatchesIndexer, cleanSpecialSearchTitle, parseFilterList, normalizeResolutionToken } = require('./src/utils/parsers');
 const { sleep, annotateNzbResult, applyMaxSizeFilter, prepareSortedResults, getPreferredLanguageMatch, getPreferredLanguageMatches, triageStatusRank, buildTriageTitleMap, prioritizeTriageCandidates, triageDecisionsMatchStatuses, sanitizeDecisionForCache, serializeFinalNzbResults, restoreFinalNzbResults, safeStat, formatStreamTitle } = require('./src/utils/helpers');
 const indexerService = require('./src/services/indexer');
@@ -2473,6 +2473,7 @@ async function streamHandler(req, res) {
     const activePreferredLanguages = resolvedPreferredLanguages;
 
     const instantStreams = [];
+    const verifiedStreams = [];
     const regularStreams = [];
 
     finalNzbResults.forEach((result) => {
@@ -2485,7 +2486,9 @@ async function streamHandler(req, res) {
       const sizeString = sizeInGB ? `${sizeInGB} GB` : 'Size Unknown';
       const releaseInfo = result.release || {};
       const releaseLanguages = Array.isArray(releaseInfo.languages) ? releaseInfo.languages : [];
+      const releaseLanguageLabels = resolveLanguageLabels(releaseLanguages);
       const sourceLanguage = result.language || null;
+      const sourceLanguageLabel = resolveLanguageLabel(sourceLanguage);
       const qualityMatch = result.title?.match(/(4320p|2160p|1440p|1080p|720p|576p|540p|480p|360p|240p|8k|4k|uhd)/i);
       const detectedResolutionToken = releaseInfo.resolution
         || (qualityMatch ? normalizeResolutionToken(qualityMatch[0]) : null);
@@ -2502,11 +2505,14 @@ async function streamHandler(req, res) {
       });
       const qualitySummary = qualityParts.join(' ');
       const quality = resolutionBadge || qualityLabel || '';
-      const languageLabel = releaseLanguages.length > 0 ? releaseLanguages.join(', ') : null;
+      const languageLabel = releaseLanguageLabels.length > 0
+        ? releaseLanguageLabels.join(', ')
+        : (sourceLanguageLabel || null);
       const preferredLanguageMatches = activePreferredLanguages.length > 0
         ? getPreferredLanguageMatches(result, activePreferredLanguages)
         : [];
-      const matchedPreferredLanguage = preferredLanguageMatches.length > 0 ? preferredLanguageMatches[0] : null;
+      const preferredLanguageLabels = resolveLanguageLabels(preferredLanguageMatches.map(resolveLanguageLabel));
+      const matchedPreferredLanguage = preferredLanguageLabels.length > 0 ? preferredLanguageLabels[0] : null;
       const preferredLanguageHit = preferredLanguageMatches.length > 0;
 
       const baseParams = new URLSearchParams({
@@ -2654,8 +2660,8 @@ async function streamHandler(req, res) {
       const tags = [];
       if (triageTag) tags.push(triageTag);
       if (isInstant && STREAMING_MODE !== 'native') tags.push('⚡ Instant');
-      if (preferredLanguageMatches.length > 0) {
-        preferredLanguageMatches.forEach((language) => tags.push(language));
+      if (preferredLanguageLabels.length > 0) {
+        preferredLanguageLabels.forEach((language) => tags.push(language));
       }
       // quality summary now part of name; keep tags focused on status/language/size
       if (languageLabel) tags.push(`🌐 ${languageLabel}`);
@@ -2700,7 +2706,7 @@ async function streamHandler(req, res) {
         size: result.size || 0, // Raw bytes
         folderSize: 0,
         indexer: namingContext.indexer,
-        languages: (result.languages || []),
+        languages: releaseLanguageLabels.length > 0 ? releaseLanguageLabels : (sourceLanguageLabel ? [sourceLanguageLabel] : []),
         network: '', // Not strictly tracked
         filename: namingContext.filename,
         message: namingContext.health, // Map health status to message
@@ -2708,13 +2714,15 @@ async function streamHandler(req, res) {
         releaseGroup: namingContext.group, // AIOStreams uses releaseGroup
         // Additional mappings
         shortName: namingContext.indexer,
-        cached: isInstant || Boolean(triageTag && triageTag.includes('✅'))
+        cached: isInstant || Boolean(triageTag && triageTag.includes('✅')),
+        instant: isInstant
       };
 
       // Service context (representing the provider/addon logic)
       namingContext.service = {
         shortName: 'Usenet',
-        cached: isInstant || Boolean(triageTag && triageTag.includes('✅'))
+        cached: isInstant || Boolean(triageTag && triageTag.includes('✅')),
+        instant: isInstant
       };
 
       // Addon context
@@ -2722,13 +2730,69 @@ async function streamHandler(req, res) {
         name: addonLabel
       };
 
-      // Default AIOStreams template
-      const defaultDescriptionPattern = `{stream.source::exists["🎥 {stream.source} "||""]}{stream.encode::exists["🎞️ {stream.encode}\n"||"\n"]}{stream.visualTags::join(' | ')::exists["📺 {stream.visualTags::join(' | ')}\n"||""]}{stream.audioTags::join(' ')::exists["🎧 {stream.audioTags::join(' ')}\n"||""]}{stream.releaseGroup::exists["👥 {stream.releaseGroup}\n"||""]}{stream.size::>0["📦 {stream.size::bytes}\n"||""]}{stream.languages::join(' ')::exists["🌎 {stream.languages::join(' ')}\n"||""]}{stream.filename::exists["📄 {stream.filename}"||""]}`;
-      // Use the fancy default if NZB_NAMING_PATTERN is unset
-      const formattedTitle = formatStreamTitle(NZB_NAMING_PATTERN, namingContext, defaultDescriptionPattern);
+      const buildPatternFromTokenList = (rawPattern, variant, defaultPattern) => {
+        if (rawPattern && typeof rawPattern === 'string' && rawPattern.includes('{')) {
+          return rawPattern;
+        }
+        const normalizedList = String(rawPattern || '')
+          .replace(/\band\b/gi, ',')
+          .replace(/[;|]/g, ',');
+        const tokens = normalizedList
+          .split(',')
+          .map((token) => token.trim())
+          .filter(Boolean);
+        if (tokens.length === 0) return defaultPattern;
 
-      const defaultNamePattern = '[{addon.name}{service.cached::istrue[" ✅"||""]}] {stream.quality} - {stream.indexer}';
-      const formattedName = formatStreamTitle(NZB_DISPLAY_NAME_PATTERN, namingContext, defaultNamePattern);
+        const shortTokenMap = {
+          addon: '{addon.name}',
+          instant: '{stream.instant::istrue["⚡"||""]}',
+          health: '{stream.health::exists["{stream.health}"||""]}',
+          quality: '{stream.quality::exists["{stream.quality}"||""]}',
+          resolution: '{stream.resolution::exists["{stream.resolution}"||""]}',
+          source: '{stream.source::exists["{stream.source}"||""]}',
+          codec: '{stream.encode::exists["{stream.encode}"||""]}',
+          group: '{stream.releaseGroup::exists["{stream.releaseGroup}"||""]}',
+          size: '{stream.size::>0["{stream.size::bytes}"||""]}',
+          languages: '{stream.languages::join(" ")::exists["{stream.languages::join(\" \")}"||""]}',
+          indexer: '{stream.indexer::exists["{stream.indexer}"||""]}',
+          filename: '{stream.filename::exists["{stream.filename}"||""]}',
+          tags: '{tags::exists["{tags}"||""]}',
+        };
+
+        const longTokenMap = {
+          filename: '{stream.filename::exists["📄 {stream.filename}"||""]}',
+          source: '{stream.source::exists["🎥 {stream.source}"||""]}',
+          codec: '{stream.encode::exists["🎞️ {stream.encode}"||""]}',
+          resolution: '{stream.resolution::exists["🖥️ {stream.resolution}"||""]}',
+          visual: '{stream.visualTags::join(" | ")::exists["📺 {stream.visualTags::join(\" | \")}"||""]}',
+          audio: '{stream.audioTags::join(" ")::exists["🎧 {stream.audioTags::join(\" \")}"||""]}',
+          group: '{stream.releaseGroup::exists["👥 {stream.releaseGroup}"||""]}',
+          size: '{stream.size::>0["📦 {stream.size::bytes}"||""]}',
+          languages: '{stream.languages::join(" ")::exists["🌎 {stream.languages::join(\" \")}"||""]}',
+          indexer: '{stream.indexer::exists["🔎 {stream.indexer}"||""]}',
+          health: '{stream.health::exists["🧪 {stream.health}"||""]}',
+          instant: '{stream.instant::istrue["⚡ Instant"||""]}',
+          quality: '{stream.quality::exists["✨ {stream.quality}"||""]}',
+          tags: '{tags::exists["🏷️ {tags}"||""]}',
+        };
+
+        const tokenMap = variant === 'long' ? longTokenMap : shortTokenMap;
+        const parts = tokens
+          .map((token) => tokenMap[token.toLowerCase()] || null)
+          .filter(Boolean);
+
+        if (parts.length === 0) return defaultPattern;
+        return variant === 'long' ? parts.join('\n') : parts.join(' ');
+      };
+
+      // Default AIOStreams template
+      const defaultDescriptionPattern = '{stream.filename::exists["📄 {stream.filename}\n"||""]}{stream.source::exists["🎥 {stream.source} "||""]}{stream.encode::exists["🎞️ {stream.encode}\n"||"\n"]}{stream.visualTags::join(\' | \')::exists["📺 {stream.visualTags::join(\' | \')}\n"||""]}{stream.audioTags::join(\' \')::exists["🎧 {stream.audioTags::join(\' \')}\n"||""]}{stream.releaseGroup::exists["👥 {stream.releaseGroup}\n"||""]}{stream.size::>0["📦 {stream.size::bytes}\n"||""]}{stream.languages::join(\' \')::exists["🌎 {stream.languages::join(\' \')}\n"||""]}{stream.indexer::exists["🔎 {stream.indexer}"||""]}';
+      const effectiveDescriptionPattern = buildPatternFromTokenList(NZB_NAMING_PATTERN, 'long', defaultDescriptionPattern);
+      const formattedTitle = formatStreamTitle(effectiveDescriptionPattern, namingContext, defaultDescriptionPattern);
+
+      const defaultNamePattern = '{addon.name}{stream.instant::istrue[" ⚡"||""]}{stream.health::exists[" {stream.health}"||""]} {stream.quality}';
+      const effectiveNamePattern = buildPatternFromTokenList(NZB_DISPLAY_NAME_PATTERN, 'short', defaultNamePattern);
+      const formattedName = formatStreamTitle(effectiveNamePattern, namingContext, defaultNamePattern);
 
       // Build behavior hints based on streaming mode
       let behaviorHints;
@@ -2856,6 +2920,8 @@ async function streamHandler(req, res) {
 
       if (isInstant) {
         instantStreams.push(stream);
+      } else if (triageStatus === 'verified') {
+        verifiedStreams.push(stream);
       } else {
         regularStreams.push(stream);
       }
@@ -2873,7 +2939,7 @@ async function streamHandler(req, res) {
       }
     });
 
-    const streams = instantStreams.concat(regularStreams);
+    const streams = instantStreams.concat(verifiedStreams, regularStreams);
 
     // Log cached streams count (only relevant for NZBDav mode)
     if (STREAMING_MODE !== 'native') {

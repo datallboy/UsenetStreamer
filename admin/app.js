@@ -206,8 +206,12 @@
 
   function normalizeQualityToken(value) {
     if (value === undefined || value === null) return null;
-    const token = String(value).trim().toLowerCase();
-    return token || null;
+    let token = String(value).trim().toLowerCase();
+    if (!token) return null;
+    if (token === '8k') return '4320p';
+    if (token === '4k') return '2160p';
+    if (token === 'uhd') return '2160p';
+    return token;
   }
 
   function syncQualityHiddenInput() {
@@ -1337,7 +1341,9 @@
         message: 'I like turtles',
         releaseGroup: 'FLUX',
         shortName: 'NZBGeek',
-        cached: true
+        cached: true,
+        instant: true,
+        health: '✅'
       },
       service: {
         shortName: 'Usenet',
@@ -1348,9 +1354,58 @@
       }
     };
 
-    const defaultShortPattern = '[{addon.name}{service.cached::istrue[" ✅"||""]}] {stream.quality} - {stream.indexer}';
-    // Default AIOStreams template
-    const defaultDescPattern = `{stream.source::exists["🎥 {stream.source} "||""]}{stream.encode::exists["🎞️ {stream.encode}\n"||"\n"]}{stream.visualTags::join(' | ')::exists["📺 {stream.visualTags::join(' | ')}\n"||""]}{stream.audioTags::join(' ')::exists["🎧 {stream.audioTags::join(' ')}\n"||""]}{stream.releaseGroup::exists["👥 {stream.releaseGroup}\n"||""]}{stream.size::>0["📦 {stream.size::bytes}\n"||""]}{stream.languages::join(' ')::exists["🌎 {stream.languages::join(' ')}\n"||""]}{stream.filename::exists["📄 {stream.filename}"||""]}`;
+    const defaultShortPattern = 'addon, instant, health, quality';
+    const defaultDescPattern = 'filename, source, codec, visual, audio, group, size, languages, indexer';
+
+    function buildPatternFromTokenList(rawPattern, variant, fallbackPattern) {
+      if (rawPattern && rawPattern.includes('{')) return rawPattern;
+      const normalizedList = String(rawPattern || '')
+        .replace(/\band\b/gi, ',')
+        .replace(/[;|]/g, ',');
+      const tokens = normalizedList
+        .split(',')
+        .map((token) => token.trim())
+        .filter(Boolean);
+      if (tokens.length === 0) return fallbackPattern;
+
+      const shortTokenMap = {
+        addon: '{addon.name}',
+        instant: '{stream.instant::istrue["⚡"||""]}',
+        health: '{stream.health::exists["{stream.health}"||""]}',
+        quality: '{stream.quality::exists["{stream.quality}"||""]}',
+        resolution: '{stream.resolution::exists["{stream.resolution}"||""]}',
+        source: '{stream.source::exists["{stream.source}"||""]}',
+        codec: '{stream.encode::exists["{stream.encode}"||""]}',
+        group: '{stream.releaseGroup::exists["{stream.releaseGroup}"||""]}',
+        size: '{stream.size::>0["{stream.size::bytes}"||""]}',
+        languages: '{stream.languages::join(" ")::exists["{stream.languages::join(\" \")}"||""]}',
+        indexer: '{stream.indexer::exists["{stream.indexer}"||""]}',
+        filename: '{stream.filename::exists["{stream.filename}"||""]}',
+        tags: '{tags::exists["{tags}"||""]}',
+      };
+
+      const longTokenMap = {
+        filename: '{stream.filename::exists["📄 {stream.filename}"||""]}',
+        source: '{stream.source::exists["🎥 {stream.source}"||""]}',
+        codec: '{stream.encode::exists["🎞️ {stream.encode}"||""]}',
+        resolution: '{stream.resolution::exists["🖥️ {stream.resolution}"||""]}',
+        visual: '{stream.visualTags::join(" | ")::exists["📺 {stream.visualTags::join(\" | \")}"||""]}',
+        audio: '{stream.audioTags::join(" ")::exists["🎧 {stream.audioTags::join(\" \")}"||""]}',
+        group: '{stream.releaseGroup::exists["👥 {stream.releaseGroup}"||""]}',
+        size: '{stream.size::>0["📦 {stream.size::bytes}"||""]}',
+        languages: '{stream.languages::join(" ")::exists["🌎 {stream.languages::join(\" \")}"||""]}',
+        indexer: '{stream.indexer::exists["🔎 {stream.indexer}"||""]}',
+        health: '{stream.health::exists["🧪 {stream.health}"||""]}',
+        instant: '{stream.instant::istrue["⚡ Instant"||""]}',
+        quality: '{stream.quality::exists["✨ {stream.quality}"||""]}',
+        tags: '{tags::exists["🏷️ {tags}"||""]}',
+      };
+
+      const map = variant === 'long' ? longTokenMap : shortTokenMap;
+      const parts = tokens.map((token) => map[token.toLowerCase()] || null).filter(Boolean);
+      if (parts.length === 0) return fallbackPattern;
+      return variant === 'long' ? parts.join('\n') : parts.join(' ');
+    }
 
     function runPreview(pattern, defaultPattern) {
       let effective = (pattern && typeof pattern === 'string' && pattern.trim().length > 0) ? pattern : defaultPattern;
@@ -1361,8 +1416,10 @@
     }
 
     function updatePreview() {
-      const shortPattern = shortInput?.value || defaultShortPattern;
-      const descPattern = descInput?.value || defaultDescPattern;
+      const shortPatternRaw = shortInput?.value || defaultShortPattern;
+      const descPatternRaw = descInput?.value || defaultDescPattern;
+      const shortPattern = buildPatternFromTokenList(shortPatternRaw, 'short', defaultShortPattern);
+      const descPattern = buildPatternFromTokenList(descPatternRaw, 'long', defaultDescPattern);
 
       previewShortEl.textContent = runPreview(shortPattern, defaultShortPattern);
       previewDescEl.textContent = runPreview(descPattern, defaultDescPattern);
