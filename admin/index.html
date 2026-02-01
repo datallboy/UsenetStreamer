@@ -177,6 +177,7 @@
             <div class="language-multiselect wide-field" data-language-selector>
               <span class="field-label">Preferred Languages</span>
               <input type="hidden" name="NZB_PREFERRED_LANGUAGE" data-language-hidden />
+              <input type="text" class="language-search" placeholder="Search languages..." data-search-target="nzb" />
               <div class="language-checkbox-grid">
                 <label class="checkbox"><input type="checkbox" value="English" data-language-option /> <span>English</span></label>
                 <label class="checkbox"><input type="checkbox" value="Tamil" data-language-option /> <span>Tamil</span></label>
@@ -254,12 +255,12 @@
             </div>
             <div class="quality-checkbox-grid">
               <label class="checkbox">
-                <input type="checkbox" data-quality-option value="4320p" checked />
+                <input type="checkbox" data-quality-option value="8k" checked />
                 <span>4320p / 8K</span>
               </label>
               <label class="checkbox">
-                <input type="checkbox" data-quality-option value="2160p" checked />
-                <span>2160p / 4K / UHD</span>
+                <input type="checkbox" data-quality-option value="4k" checked />
+                <span>2160p / 4K UHD</span>
               </label>
               <label class="checkbox">
                 <input type="checkbox" data-quality-option value="1440p" checked />
@@ -303,6 +304,81 @@
               <input name="NZB_RESOLUTION_LIMIT_PER_QUALITY" type="number" min="0" placeholder="Unlimited" />
               <span class="field-hint">Applies evenly to every enabled resolution. Leave blank or set 0 for no cap.</span>
             </label>
+          </div>
+          <div class="advanced-filters">
+            <div class="advanced-filters-header">
+              <span>Release Exclusions</span>
+              <span class="field-hint">Comma-separated list of items to exclude from results. Click "Show Examples" for available options.</span>
+            </div>
+            <div class="field-grid">
+              <label class="wide-field">Exclude Releases Containing (comma-separated)
+                <textarea name="NZB_RELEASE_EXCLUSIONS" rows="3" placeholder="e.g. cam,ts,hardcoded,yify"></textarea>
+                <span class="field-hint">Add codecs, sources, audio, flags, or groups to exclude. Case-insensitive.</span>
+              </label>
+            </div>
+            <details class="exclusion-examples">
+              <summary>Show Examples & Available Options</summary>
+              <div class="examples-grid">
+                <div class="example-category">
+                  <h4>Video Codecs</h4>
+                  <code>x264, x265, h264, hevc, xvid, mpeg2, vp8, vp9, av1</code>
+                </div>
+                <div class="example-category">
+                  <h4>Sources (Quality)</h4>
+                  <code>cam, telesync, telecine, scr, dvdscr, dvdrip, hdtv, pdtv, web-dl, webrip, webcap, bdrip, brrip, bluray, remux, uhdrip, hdrip, vhsrip, sdtv, tvrip, vodr, workprint</code>
+                </div>
+                <div class="example-category">
+                  <h4>Audio Codecs</h4>
+                  <code>aac, ac3, eac3, mp3, flac, truehd, atmos, dts lossy, dts lossless, dd</code>
+                </div>
+                <div class="example-category">
+                  <h4>Visual Tags</h4>
+                  <code>hdr, hdr10, hdr10+, dv, sdr, 3d, 10bit, 8bit</code>
+                </div>
+                <div class="example-category">
+                  <h4>Flags</h4>
+                  <code>hardcoded, proper, repack, hdr, extended, remastered, unrated, remux, retail</code>
+                </div>
+                <div class="example-category">
+                  <h4>Release Groups</h4>
+                  <code>yify, rarbg, evo, eztv</code>
+                  <p class="hint">Use actual group names from releases</p>
+                </div>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="group">
+          <h3>Stream Naming</h3>
+          <p class="hint">Customize how streams appear in Stremio. Leave blank to use the default.</p>
+          <div class="field-grid">
+            <label class="wide-field">Stream Label Pattern (Short Name)
+              <textarea name="NZB_DISPLAY_NAME_PATTERN" class="pattern-input" rows="2" placeholder='[{addon.name}{service.cached::istrue[" ✅"||""]}] {stream.quality} - {stream.indexer}'></textarea>
+              <span class="field-hint">The short name shown in the list.</span>
+            </label>
+            <label class="wide-field">Description Pattern (Long Title)
+              <textarea name="NZB_NAMING_PATTERN" class="pattern-input" rows="6" placeholder='{stream.source::exists[&quot;🎥 {stream.source} &quot;||&quot;&quot;]}...{stream.resolution::exists[&quot;\n🎞️ {stream.resolution}&quot;||&quot;&quot;]}{stream.audioTags::exists[&quot;\n🎧 {stream.audioTags}&quot;||&quot;&quot;]}{stream.size::exists[&quot;\n📦 {stream.size}&quot;||&quot;&quot;]}{stream.language::exists[&quot;\n🌎 {stream.language}&quot;||&quot;&quot;]}{stream.indexer::exists[&quot;\n🏢 {stream.indexer}&quot;||&quot;&quot;]}{stream.cached::istrue["\n⚡ Cached&quot;||&quot;&quot;]}{stream.filename::exists[&quot;\n📄 {stream.filename}&quot;||&quot;&quot;]}'></textarea>
+              <span class="field-hint">Supports <strong>AIOStreams</strong> naming templates. <br>
+              Available modifiers: <code>::exists</code>, <code>::istrue</code>, <code>::isfalse</code>, <code>::upper</code>, <code>::replace</code>, etc.<br>
+              Use <code>stream.resolution</code>, <code>stream.size</code>, <code>stream.audioTags</code>, etc.</span>
+            </label>
+            <div class="wide-field preview-card">
+              <div class="preview-header">
+                <span>Live Preview</span>
+                <span>EXAMPLE</span>
+              </div>
+              <div class="preview-item">
+                <span class="preview-label" id="previewShortName">[UsenetStreamer ✅] 4K - NZBGeek</span>
+                <div class="preview-desc" id="previewDescription">🎥 WEB-DL 🎞️ x265
+📺 HDR | DV
+🎧 Atmos DDP5.1
+👥 FLUX
+📦 15.4 GB
+🌎 English
+📄 Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX.mkv</div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -422,6 +498,7 @@
               <span class="field-hint">Select additional languages to search with, along with auto-detected language. Leave empty to use only auto-detected language.</span>
             </div>
             <input type="hidden" name="TMDB_SEARCH_LANGUAGES" data-tmdb-language-hidden />
+            <input type="text" class="language-search" placeholder="Search languages..." data-search-target="tmdb" />
             <div class="language-checkbox-grid">
                 <label class="checkbox"><input type="checkbox" value="en-US" data-tmdb-language-option /> <span>English (US)</span></label>
                 <label class="checkbox"><input type="checkbox" value="en-GB" data-tmdb-language-option /> <span>English (UK)</span></label>
@@ -549,6 +626,7 @@
       <p class="support-note">If you like this addon, please consider <a href="https://buymeacoffee.com/gaikwadsank" target="_blank" rel="noopener">buying me a coffee</a>.</p>
     </section>
   </main>
+  <script src="/utils/templateEngine.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

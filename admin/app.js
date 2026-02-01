@@ -131,6 +131,11 @@
         } else {
           element.checked = parseBool(rawValue);
         }
+      } else if (element.multiple) {
+        const selectedValues = rawValue ? rawValue.split(',').map(v => v.trim()).filter(v => v) : [];
+        Array.from(element.options).forEach(option => {
+          option.selected = selectedValues.includes(option.value);
+        });
       } else if (element.type === 'number' && rawValue === '') {
         element.value = '';
       } else {
@@ -147,6 +152,9 @@
       if (!key) return;
       if (element.type === 'checkbox') {
         payload[key] = element.checked ? 'true' : 'false';
+      } else if (element.multiple) {
+        const selected = Array.from(element.selectedOptions).map(opt => opt.value);
+        payload[key] = selected.join(',');
       } else {
         payload[key] = element.value != null ? element.value.toString() : '';
       }
@@ -451,15 +459,15 @@
       </div>
     `;
 
-  const moveUpButton = row.querySelector('[data-row-action="move-up"]');
-  const moveDownButton = row.querySelector('[data-row-action="move-down"]');
-  const removeButton = row.querySelector('[data-row-action="remove"]');
-  const testButton = row.querySelector('[data-row-action="test"]');
-  const enabledToggle = row.querySelector('[data-field="INDEXER_ENABLED"]');
-  const paidToggle = row.querySelector('[data-field="PAID"]');
-  const apiKeyInput = row.querySelector('[data-field="API_KEY"]');
-  const apiKeyToggle = row.querySelector('[data-role="api-key-toggle"]');
-  const endpointInput = row.querySelector('[data-field="ENDPOINT"]');
+    const moveUpButton = row.querySelector('[data-row-action="move-up"]');
+    const moveDownButton = row.querySelector('[data-row-action="move-down"]');
+    const removeButton = row.querySelector('[data-row-action="remove"]');
+    const testButton = row.querySelector('[data-row-action="test"]');
+    const enabledToggle = row.querySelector('[data-field="INDEXER_ENABLED"]');
+    const paidToggle = row.querySelector('[data-field="PAID"]');
+    const apiKeyInput = row.querySelector('[data-field="API_KEY"]');
+    const apiKeyToggle = row.querySelector('[data-role="api-key-toggle"]');
+    const endpointInput = row.querySelector('[data-field="ENDPOINT"]');
 
     if (moveUpButton) moveUpButton.addEventListener('click', () => moveNewznabRow(row, -1));
     if (moveDownButton) moveDownButton.addEventListener('click', () => moveNewznabRow(row, 1));
@@ -741,13 +749,14 @@
     saveStatus.textContent = '';
 
     try {
-  const data = await apiRequest('/admin/api/config');
-  const values = data.values || {};
-  setAvailableNewznabPresets(data?.newznabPresets || []);
+      const data = await apiRequest('/admin/api/config');
+      const values = data.values || {};
+      setAvailableNewznabPresets(data?.newznabPresets || []);
       updateVersionBadge(data?.addonVersion);
       allowNewznabTestSearch = Boolean(data?.debugNewznabSearch);
       setupNewznabRowsFromValues(values);
       populateForm(values);
+      setupPatternPreview(); // Initialize preview with loaded values
       applyLanguageSelectionsFromHidden();
       applyQualitySelectionsFromHidden();
       applyTmdbLanguageSelectionsFromHidden();
@@ -758,10 +767,10 @@
       syncManagerControls();
       syncNewznabControls();
       configSection.classList.remove('hidden');
-  updateManifestLink(data.manifestUrl || '');
+      updateManifestLink(data.manifestUrl || '');
       runtimeEnvPath = data.runtimeEnvPath || null;
-  const baseMessage = 'Use the install buttons once HTTPS and your shared token are set.';
-  manifestDescription.textContent = baseMessage;
+      const baseMessage = 'Use the install buttons once HTTPS and your shared token are set.';
+      manifestDescription.textContent = baseMessage;
     } catch (error) {
       authError.textContent = error.message;
       authError.classList.remove('hidden');
@@ -780,6 +789,47 @@
       copyManifestStatus.textContent = '';
     }
   }
+
+  // ... (existing functions)
+
+
+  // Initialization
+  function init() {
+    const storedToken = getStoredToken();
+    if (storedToken) {
+      tokenInput.value = storedToken;
+    }
+
+    if (loadButton) {
+      loadButton.addEventListener('click', () => {
+        setStoredToken(tokenInput.value);
+        loadConfiguration().then(() => {
+          setupPatternPreview(); // Init preview after load
+        });
+      });
+    }
+
+    // ... other listeners ...
+    if (saveButton) saveButton.addEventListener('click', handleSave);
+
+    // If we have token, auto-load? No, explicit action is better for security awareness (or per existing logic).
+    // The existing logic doesn't auto-load.
+  }
+
+  // Hook into init
+  // To avoid rewriting init completely, I will just call init() at the end wrapped in existing logic?
+  // Wait, the file ends with `init(); })();`.
+  // I need to find the `init` function definition and append `setupPatternPreview` call inside `loadConfiguration` success path, OR just append `setupPatternPreview` elsewhere.
+  // Actually, I can just append `setupPatternPreview` logic and hook it up.
+
+  // Let's modify `loadConfiguration` to call `setupPatternPreview`?
+  // Or just call it.
+  // The easiest way is to rewrite `init` at the end of the file.
+  // Or better, since `loadConfiguration` populates the form, I should call it there.
+
+  // Actually, I will replace the end of the file.
+
+  // Let's find where `init` is defined. It is likely near the end.
 
   function setCopyButtonState(enabled) {
     if (!copyManifestButton) return;
@@ -922,7 +972,7 @@
     const streamingMode = streamingModeSelect?.value || 'nzbdav';
     const managerValue = managerSelect.value || 'none';
     const managerFields = configForm.querySelectorAll('[data-manager-field]');
-    
+
     // In native mode, force manager to 'none' and hide manager options
     if (streamingMode === 'native') {
       managerFields.forEach((field) => field.classList.add('hidden'));
@@ -940,7 +990,7 @@
   function syncStreamingModeControls() {
     const mode = streamingModeSelect?.value || 'nzbdav';
     const isNativeMode = mode === 'native';
-    
+
     // Show/hide native mode notice
     if (nativeModeNotice) {
       nativeModeNotice.classList.toggle('hidden', !isNativeMode);
@@ -949,12 +999,12 @@
     if (easynewsHttpsWarning) {
       easynewsHttpsWarning.classList.toggle('hidden', !isNativeMode);
     }
-    
+
     // Hide NZBDav section in native mode
     if (nzbdavGroup) {
       nzbdavGroup.classList.toggle('hidden', isNativeMode);
     }
-    
+
     // In native mode, force manager to 'none' and disable the select
     if (indexerManagerGroup && managerSelect) {
       if (isNativeMode) {
@@ -976,7 +1026,7 @@
         if (existingHint) existingHint.remove();
       }
     }
-    
+
     syncManagerControls();
   }
 
@@ -1046,7 +1096,7 @@
         method: 'POST',
         body: JSON.stringify({ values }),
       });
-  const manifestUrl = result?.manifestUrl || currentManifestUrl || '';
+      const manifestUrl = result?.manifestUrl || currentManifestUrl || '';
       if (manifestUrl) updateManifestLink(manifestUrl);
       const portChanged = Boolean(result?.portChanged);
       const manifestNote = manifestUrl ? `Manifest URL: ${manifestUrl}. ` : '';
@@ -1105,6 +1155,29 @@
       syncSaveGuard();
     });
   });
+
+  const languageSearch = configForm.querySelector('input[data-search-target="nzb"]');
+  const tmdbLanguageSearch = configForm.querySelector('input[data-search-target="tmdb"]');
+
+  function setupLanguageSearch(searchInput, checkboxList) {
+    if (!searchInput || !checkboxList) return;
+    searchInput.addEventListener('input', () => {
+      const query = (searchInput.value || '').trim().toLowerCase();
+      checkboxList.forEach((input) => {
+        const label = input.closest('label');
+        if (!label) return;
+        const text = (label.textContent || '').trim().toLowerCase();
+        if (!query) {
+          label.style.display = '';
+        } else {
+          label.style.display = text.includes(query) ? '' : 'none';
+        }
+      });
+    });
+  }
+
+  setupLanguageSearch(languageSearch, languageCheckboxes);
+  setupLanguageSearch(tmdbLanguageSearch, tmdbLanguageCheckboxes);
 
   const managerPaidInputs = configForm.querySelectorAll('[name="NZB_TRIAGE_PRIORITY_INDEXERS"], [name="NZB_TRIAGE_HEALTH_INDEXERS"]');
   managerPaidInputs.forEach((input) => {
@@ -1177,6 +1250,52 @@
       loadConfiguration();
     }
   }
+  function setupReleaseExclusions() {
+    const textarea = configForm.querySelector('textarea[name="NZB_RELEASE_EXCLUSIONS"]');
+    const exampleCategories = document.querySelectorAll('.example-category');
+
+    if (!textarea || exampleCategories.length === 0) return;
+
+    exampleCategories.forEach((category) => {
+      const codeBlock = category.querySelector('code');
+      if (!codeBlock) return;
+
+      const rawText = codeBlock.textContent || '';
+      const items = rawText.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+
+      // clear the code block and replace with clickable spans
+      codeBlock.innerHTML = '';
+      codeBlock.style.display = 'block'; // ensure it behaves like a container
+
+      items.forEach((item) => {
+        const span = document.createElement('span');
+        span.className = 'clickable-example';
+        span.textContent = item;
+        span.title = 'Click to add to exclusions';
+        span.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation(); // prevent closing details if inside one
+
+          const currentVal = textarea.value;
+          const currentItems = currentVal.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+
+          if (!currentItems.includes(item)) {
+            currentItems.push(item);
+            textarea.value = currentItems.join(', ');
+            // Trigger a visual feedback or flash the textarea
+            textarea.focus();
+            textarea.style.transition = 'box-shadow 0.2s ease';
+            textarea.style.boxShadow = '0 0 0 4px rgba(62, 180, 255, 0.3)';
+            setTimeout(() => {
+              textarea.style.boxShadow = '';
+            }, 300);
+          }
+        });
+        codeBlock.appendChild(span);
+      });
+    });
+  }
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {
@@ -1184,6 +1303,78 @@
       });
     });
   }
+
+
+  function setupPatternPreview() {
+    const previewShortEl = document.getElementById('previewShortName');
+    const previewDescEl = document.getElementById('previewDescription');
+    const shortInput = configForm.querySelector('[name="NZB_DISPLAY_NAME_PATTERN"]');
+    const descInput = configForm.querySelector('textarea[name="NZB_NAMING_PATTERN"]');
+
+    if (!previewShortEl || !previewDescEl) return;
+
+    // Mixed Context: Flat keys + Nested objects
+    const mockData = {
+      // Nested (AIOStreams)
+      stream: {
+        proxied: true,
+        private: false,
+        resolution: '2160p',
+        upscaled: false,
+        quality: '4K',
+        encode: 'x265',
+        type: 'movie',
+        visualTags: ['HDR', 'DV'],
+        audioTags: ['Atmos', 'DDP5.1'],
+        audioChannels: ['5.1'],
+        seeders: 0,
+        size: 16535624089.6, // 15.4 GB in bytes
+        folderSize: 0,
+        indexer: 'NZBGeek',
+        languages: ['English'],
+        network: '',
+        filename: 'Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX.mkv',
+        message: 'I like turtles',
+        releaseGroup: 'FLUX',
+        shortName: 'NZBGeek',
+        cached: true
+      },
+      service: {
+        shortName: 'Usenet',
+        cached: true
+      },
+      addon: {
+        name: 'UsenetStreamer'
+      }
+    };
+
+    const defaultShortPattern = '[{addon.name}{service.cached::istrue[" ✅"||""]}] {stream.quality} - {stream.indexer}';
+    // Default AIOStreams template
+    const defaultDescPattern = `{stream.source::exists["🎥 {stream.source} "||""]}{stream.encode::exists["🎞️ {stream.encode}\n"||"\n"]}{stream.visualTags::join(' | ')::exists["📺 {stream.visualTags::join(' | ')}\n"||""]}{stream.audioTags::join(' ')::exists["🎧 {stream.audioTags::join(' ')}\n"||""]}{stream.releaseGroup::exists["👥 {stream.releaseGroup}\n"||""]}{stream.size::>0["📦 {stream.size::bytes}\n"||""]}{stream.languages::join(' ')::exists["🌎 {stream.languages::join(' ')}\n"||""]}{stream.filename::exists["📄 {stream.filename}"||""]}`;
+
+    function runPreview(pattern, defaultPattern) {
+      let effective = (pattern && typeof pattern === 'string' && pattern.trim().length > 0) ? pattern : defaultPattern;
+
+      // Use the advanced TemplateEngine for all patterns
+      const engine = new TemplateEngine(mockData);
+      return engine.render(effective);
+    }
+
+    function updatePreview() {
+      const shortPattern = shortInput?.value || defaultShortPattern;
+      const descPattern = descInput?.value || defaultDescPattern;
+
+      previewShortEl.textContent = runPreview(shortPattern, defaultShortPattern);
+      previewDescEl.textContent = runPreview(descPattern, defaultDescPattern);
+    }
+
+    if (shortInput) shortInput.addEventListener('input', updatePreview);
+    if (descInput) descInput.addEventListener('input', updatePreview);
+    updatePreview();
+  }
+
+  // Final Init Call
+  setupReleaseExclusions();
   syncHealthControls();
   syncSortingControls();
   syncStreamingModeControls();
