@@ -69,7 +69,7 @@ const STREAM_HIGH_WATER_MARK = (() => {
 })();
 const FAILURE_VIDEO_PATH = path.resolve(__dirname, '../../assets', 'failure_video.mp4');
 const VIDEO_TYPE_FAILURE_PATH = path.resolve(__dirname, '../../assets', 'video_type_failure.mp4');
-const ADDON_VERSION = '1.6.1';
+const ADDON_VERSION = '1.7.0';
 
 function ensureNzbdavConfigured() {
   if (!NZBDAV_URL) {
@@ -283,11 +283,15 @@ async function waitForNzbdavHistorySlot(nzoId, category) {
   throw new Error('[NZBDAV] Timeout while waiting for NZB to become streamable');
 }
 
-async function fetchCompletedNzbdavHistory(categories = []) {
+async function fetchCompletedNzbdavHistory(categories = [], limitOverride = null) {
   ensureNzbdavConfigured();
   const categoryList = Array.isArray(categories) && categories.length > 0
     ? Array.from(new Set(categories.filter((value) => value !== undefined && value !== null && String(value).trim() !== '')))
     : [null];
+
+  const effectiveLimit = Number.isFinite(limitOverride) && limitOverride > 0
+    ? Math.floor(limitOverride)
+    : NZBDAV_HISTORY_FETCH_LIMIT;
 
   const results = new Map();
 
@@ -295,7 +299,7 @@ async function fetchCompletedNzbdavHistory(categories = []) {
     try {
       const params = buildNzbdavApiParams('history', {
         start: '0',
-        limit: String(NZBDAV_HISTORY_FETCH_LIMIT),
+        limit: String(effectiveLimit),
         category: category || undefined
       });
 

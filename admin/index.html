@@ -409,6 +409,10 @@
             <label>Series Category
               <input name="NZBDAV_CATEGORY_SERIES" type="text" placeholder="Tv" />
             </label>
+            <label>Completed Catalog Items
+              <input name="NZBDAV_HISTORY_CATALOG_LIMIT" type="number" min="0" max="200" placeholder="0" />
+              <span class="field-hint">Show last completed NZBs in the catalog (0 = off).</span>
+            </label>
           </div>
           <div class="inline-actions">
             <button type="button" class="secondary" data-test="nzbdav">Test Connection</button>

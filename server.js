@@ -43,7 +43,7 @@ const tmdbService = require('./src/services/tmdb');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
-const ADDON_VERSION = '1.6.1';
+const ADDON_VERSION = '1.7.0';
 const DEFAULT_ADDON_NAME = 'UsenetStreamer';
 let serverInstance = null;
 const SERVER_HOST = '0.0.0.0';
@@ -363,6 +363,11 @@ let ADDON_BASE_URL = (process.env.ADDON_BASE_URL || '').trim();
 let ADDON_SHARED_SECRET = (process.env.ADDON_SHARED_SECRET || '').trim();
 let ADDON_NAME = (process.env.ADDON_NAME || DEFAULT_ADDON_NAME).trim() || DEFAULT_ADDON_NAME;
 const DEFAULT_MAX_RESULT_SIZE_GB = 30;
+let NZBDAV_HISTORY_CATALOG_LIMIT = (() => {
+  const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 0);
+  if (!Number.isFinite(raw) || raw < 0) return 0;
+  return Math.floor(raw);
+})();
 let INDEXER_MANAGER_BACKOFF_ENABLED = toBoolean(process.env.INDEXER_MANAGER_BACKOFF_ENABLED, true);
 let INDEXER_MANAGER_BACKOFF_SECONDS = toPositiveInt(process.env.INDEXER_MANAGER_BACKOFF_SECONDS, 120);
 let indexerManagerUnavailableUntil = 0;
@@ -730,6 +735,11 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   INDEXER_MANAGER_BASE_URL = INDEXER_MANAGER_URL.replace(/\/+$/, '');
   INDEXER_MANAGER_BACKOFF_ENABLED = toBoolean(process.env.INDEXER_MANAGER_BACKOFF_ENABLED, true);
   INDEXER_MANAGER_BACKOFF_SECONDS = toPositiveInt(process.env.INDEXER_MANAGER_BACKOFF_SECONDS, 120);
+  NZBDAV_HISTORY_CATALOG_LIMIT = (() => {
+    const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 0);
+    if (!Number.isFinite(raw) || raw < 0) return 0;
+    return Math.floor(raw);
+  })();
   indexerManagerUnavailableUntil = 0;
 
   NEWZNAB_ENABLED = toBoolean(process.env.NEWZNAB_ENABLED, false);
@@ -843,6 +853,7 @@ const ADMIN_CONFIG_KEYS = [
   'NZBDAV_CATEGORY',
   'NZBDAV_CATEGORY_MOVIES',
   'NZBDAV_CATEGORY_SERIES',
+  'NZBDAV_HISTORY_CATALOG_LIMIT',
   'NZB_TRIAGE_HEALTH_INDEXERS',
   'SPECIAL_PROVIDER_ID',
   'SPECIAL_PROVIDER_URL',
@@ -1129,16 +1140,29 @@ function manifestHandler(req, res) {
     ? 'Native Usenet streaming for Stremio v5 (Windows) - NZB sources via direct Newznab indexers'
     : 'Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav';
 
+  const catalogs = [];
+  const resources = ['stream'];
+  const idPrefixes = ['tt', 'tvdb', 'pt', specialMetadata.SPECIAL_ID_PREFIX];
+  if (STREAMING_MODE !== 'native' && NZBDAV_HISTORY_CATALOG_LIMIT > 0) {
+    const catalogName = ADDON_NAME || DEFAULT_ADDON_NAME;
+    catalogs.push(
+      { type: 'movie', id: 'nzbdav_completed', name: catalogName, pageSize: 20, extra: [{ name: 'skip' }] },
+      { type: 'series', id: 'nzbdav_completed', name: catalogName, pageSize: 20, extra: [{ name: 'skip' }] }
+    );
+    resources.push('catalog', 'meta');
+    idPrefixes.push('nzbdav');
+  }
+
   res.json({
     id: STREAMING_MODE === 'native' ? 'com.usenet.streamer.native' : 'com.usenet.streamer',
     version: ADDON_VERSION,
     name: ADDON_NAME,
     description,
     logo: `${ADDON_BASE_URL.replace(/\/$/, '')}/assets/icon.png`,
-    resources: ['stream'],
+    resources,
     types: ['movie', 'series', 'channel', 'tv'],
-    catalogs: [],
-    idPrefixes: ['tt', 'tvdb', 'pt', specialMetadata.SPECIAL_ID_PREFIX]
+    catalogs,
+    idPrefixes
   });
 }
 
@@ -1146,11 +1170,109 @@ function manifestHandler(req, res) {
   app.get(route, manifestHandler);
 });
 
+async function catalogHandler(req, res) {
+  if (STREAMING_MODE === 'native' || NZBDAV_HISTORY_CATALOG_LIMIT <= 0) {
+    res.status(404).json({ metas: [] });
+    return;
+  }
+
+  const { type, id } = req.params;
+  if (id !== 'nzbdav_completed') {
+    res.status(404).json({ metas: [] });
+    return;
+  }
+
+  try {
+    nzbdavService.ensureNzbdavConfigured();
+  } catch (error) {
+    res.status(500).json({ metas: [], error: error.message });
+    return;
+  }
+
+  const skip = Math.max(0, parseInt(req.query.skip || '0', 10) || 0);
+  const limit = Math.max(0, Math.min(200, NZBDAV_HISTORY_CATALOG_LIMIT));
+  if (limit === 0) {
+    res.json({ metas: [] });
+    return;
+  }
+
+  const categoryForType = nzbdavService.getNzbdavCategory(type);
+  const historyMap = await nzbdavService.fetchCompletedNzbdavHistory([categoryForType], limit + skip);
+  const entries = Array.from(historyMap.values());
+  const slice = entries.slice(skip, skip + limit);
+  const poster = `${ADDON_BASE_URL.replace(/\/$/, '')}/assets/icon.png`;
+
+  const metas = slice.map((entry) => {
+    const name = entry.jobName || 'NZBDav Completed';
+    return {
+      id: `nzbdav:${entry.nzoId}`,
+      type,
+      name,
+      poster,
+    };
+  });
+
+  res.json({ metas });
+}
+
+['/catalog/:type/:id.json', '/:token/catalog/:type/:id.json'].forEach((route) => {
+  app.get(route, catalogHandler);
+});
+
+async function metaHandler(req, res) {
+  if (STREAMING_MODE === 'native' || NZBDAV_HISTORY_CATALOG_LIMIT <= 0) {
+    res.status(404).json({ meta: null });
+    return;
+  }
+  const { type, id } = req.params;
+  if (!id || !id.startsWith('nzbdav:')) {
+    res.status(404).json({ meta: null });
+    return;
+  }
+
+  try {
+    nzbdavService.ensureNzbdavConfigured();
+  } catch (error) {
+    res.status(500).json({ meta: null, error: error.message });
+    return;
+  }
+
+  const nzoId = id.slice('nzbdav:'.length).trim();
+  if (!nzoId) {
+    res.status(404).json({ meta: null });
+    return;
+  }
+
+  const categoryForType = nzbdavService.getNzbdavCategory(type);
+  const historyMap = await nzbdavService.fetchCompletedNzbdavHistory([categoryForType], Math.max(50, NZBDAV_HISTORY_CATALOG_LIMIT));
+  const match = Array.from(historyMap.values()).find((entry) => String(entry.nzoId) === String(nzoId));
+  if (!match) {
+    res.status(404).json({ meta: null });
+    return;
+  }
+
+  const poster = `${ADDON_BASE_URL.replace(/\/$/, '')}/assets/icon.png`;
+  res.json({
+    meta: {
+      id: `nzbdav:${match.nzoId}`,
+      type,
+      name: match.jobName || 'NZBDav Completed',
+      poster,
+    }
+  });
+}
+
+['/meta/:type/:id.json', '/:token/meta/:type/:id.json'].forEach((route) => {
+  app.get(route, metaHandler);
+});
+
 async function streamHandler(req, res) {
   const requestStartTs = Date.now();
   const { type, id } = req.params;
   console.log(`[REQUEST] Received request for ${type} ID: ${id}`, { ts: new Date(requestStartTs).toISOString() });
   let triagePrewarmPromise = null;
+
+  const addonBaseUrl = ADDON_BASE_URL.replace(/\/$/, '');
 
   let baseIdentifier = id;
   if (type === 'series' && typeof id === 'string') {
@@ -1167,6 +1289,7 @@ async function streamHandler(req, res) {
   let incomingImdbId = null;
   let incomingTvdbId = null;
   let incomingSpecialId = null;
+  let incomingNzbdavId = null;
 
   if (/^tt\d+$/i.test(baseIdentifier)) {
     incomingImdbId = baseIdentifier.startsWith('tt') ? baseIdentifier : `tt${baseIdentifier}`;
@@ -1190,10 +1313,18 @@ async function streamHandler(req, res) {
         break;
       }
     }
+    if (!incomingSpecialId && lowerIdentifier.startsWith('nzbdav:')) {
+      const remainder = baseIdentifier.slice('nzbdav:'.length);
+      if (remainder) {
+        incomingNzbdavId = remainder.trim();
+        baseIdentifier = `nzbdav:${incomingNzbdavId}`;
+      }
+    }
   }
 
   const isSpecialRequest = Boolean(incomingSpecialId);
-  const requestLacksIdentifiers = !incomingImdbId && !incomingTvdbId;
+  const isNzbdavRequest = Boolean(incomingNzbdavId);
+  const requestLacksIdentifiers = !incomingImdbId && !incomingTvdbId && !isSpecialRequest && !isNzbdavRequest;
 
   if (requestLacksIdentifiers && !isSpecialRequest) {
     res.status(400).json({ error: `Unsupported ID prefix for indexer manager search: ${baseIdentifier}` });
@@ -1210,6 +1341,55 @@ async function streamHandler(req, res) {
       nzbdavService.ensureNzbdavConfigured();
     }
     triagePrewarmPromise = triggerRequestTriagePrewarm();
+
+    if (isNzbdavRequest) {
+      if (STREAMING_MODE === 'native') {
+        res.status(400).json({ error: 'NZBDav catalog is only available in NZBDav mode.' });
+        return;
+      }
+
+      const categoryForType = nzbdavService.getNzbdavCategory(type);
+      const historyMap = await nzbdavService.fetchCompletedNzbdavHistory([categoryForType], Math.max(50, NZBDAV_HISTORY_CATALOG_LIMIT || 50));
+      const match = Array.from(historyMap.values()).find((entry) => String(entry.nzoId) === String(incomingNzbdavId));
+      if (!match) {
+        res.status(404).json({ error: 'NZBDav history entry not found.' });
+        return;
+      }
+
+      const tokenSegment = ADDON_SHARED_SECRET ? `/${ADDON_SHARED_SECRET}` : '';
+      const rawFilename = (match.jobName || 'stream').toString().trim();
+      const normalizedFilename = rawFilename
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const fileBase = normalizedFilename || 'stream';
+      const hasVideoExt = /\.(mkv|mp4|m4v|avi|mov|wmv|mpg|mpeg|ts|webm)$/i.test(fileBase);
+      const fileWithExt = hasVideoExt ? fileBase : `${fileBase}.mkv`;
+      const encodedFilename = encodeURIComponent(fileWithExt);
+      const baseParams = new URLSearchParams({
+        type,
+        id,
+        historyNzoId: String(match.nzoId),
+      });
+      if (match.jobName) baseParams.set('historyJobName', match.jobName);
+      if (match.category) baseParams.set('historyCategory', match.category);
+      const streamUrl = `${addonBaseUrl}${tokenSegment}/nzb/stream/${encodedFilename}?${baseParams.toString()}`;
+
+      const stream = {
+        title: match.jobName || 'NZBDav Completed',
+        name: match.jobName || 'NZBDav Completed',
+        url: streamUrl,
+        behaviorHints: {
+          notWebReady: true,
+          cached: true,
+          cachedFromHistory: true,
+          filename: match.jobName || undefined,
+        }
+      };
+
+      res.json({ streams: [stream] });
+      return;
+    }
 
     const requestedEpisode = parseRequestedEpisode(type, id, req.query || {});
     const streamCacheKey = STREAM_CACHE_MAX_ENTRIES > 0
@@ -2497,8 +2677,6 @@ async function streamHandler(req, res) {
       }
     }
 
-    const addonBaseUrl = ADDON_BASE_URL.replace(/\/$/, '');
-
     let triageLogCount = 0;
     let triageLogSuppressed = false;
     const activePreferredLanguages = resolvedPreferredLanguages;
@@ -3101,22 +3279,26 @@ async function handleEasynewsNzbDownload(req, res) {
 }
 
 async function handleNzbdavStream(req, res) {
-  const { downloadUrl, type = 'movie', id = '', title = 'NZB Stream' } = req.query;
+  let { downloadUrl, type = 'movie', id = '', title = 'NZB Stream' } = req.query;
   const easynewsPayload = typeof req.query.easynewsPayload === 'string' ? req.query.easynewsPayload : null;
   const declaredSize = Number(req.query.size);
 
-  if (!downloadUrl) {
-    res.status(400).json({ error: 'downloadUrl query parameter is required' });
+  const historyNzoId = req.query.historyNzoId;
+  if (!downloadUrl && !historyNzoId) {
+    res.status(400).json({ error: 'downloadUrl or historyNzoId query parameter is required' });
     return;
+  }
+  if (!downloadUrl && historyNzoId) {
+    downloadUrl = `history:${historyNzoId}`;
   }
 
   try {
     const category = nzbdavService.getNzbdavCategory(type);
     const requestedEpisode = parseRequestedEpisode(type, id, req.query || {});
     const cacheKey = nzbdavService.buildNzbdavCacheKey(downloadUrl, category, requestedEpisode);
-    let existingSlotHint = req.query.historyNzoId
+    let existingSlotHint = historyNzoId
       ? {
-        nzoId: req.query.historyNzoId,
+        nzoId: historyNzoId,
         jobName: req.query.historyJobName,
         category: req.query.historyCategory
       }
