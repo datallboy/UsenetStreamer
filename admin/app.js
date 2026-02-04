@@ -25,6 +25,9 @@
   const tmdbEnabledToggle = configForm.querySelector('input[name="TMDB_ENABLED"]');
   const tmdbApiInput = configForm.querySelector('input[name="TMDB_API_KEY"]');
   const tmdbTestButton = configForm.querySelector('button[data-test="tmdb"]');
+  const tvdbEnabledToggle = configForm.querySelector('input[name="TVDB_ENABLED"]');
+  const tvdbApiInput = configForm.querySelector('input[name="TVDB_API_KEY"]');
+  const tvdbTestButton = configForm.querySelector('button[data-test="tvdb"]');
   const versionBadge = document.getElementById('addonVersionBadge');
   const streamingModeSelect = document.getElementById('streamingModeSelect');
   const nativeModeNotice = document.getElementById('nativeModeNotice');
@@ -1097,13 +1100,21 @@
 
   function syncTmdbLanguageControls() {
     const enabled = Boolean(tmdbEnabledToggle?.checked);
-    setDisabledState([tmdbApiInput, tmdbTestButton], !enabled);
+    setDisabledState([tmdbApiInput], !enabled);
+    setDisabledState([tmdbTestButton], false);
     tmdbLanguageCheckboxes.forEach((checkbox) => {
       checkbox.disabled = !enabled;
     });
     if (tmdbLanguageSelector) {
       tmdbLanguageSelector.classList.toggle('disabled', !enabled);
     }
+  }
+
+  function syncTvdbControls() {
+    if (!tvdbEnabledToggle) return;
+    const enabled = Boolean(tvdbEnabledToggle.checked);
+    setDisabledState([tvdbApiInput], !enabled);
+    setDisabledState([tvdbTestButton], false);
   }
 
   function syncNewznabControls() {
@@ -1271,6 +1282,15 @@
 
   if (easynewsToggle) {
     easynewsToggle.addEventListener('change', syncSaveGuard);
+  }
+  if (tvdbEnabledToggle) {
+    tvdbEnabledToggle.addEventListener('change', () => {
+      syncTvdbControls();
+      syncSaveGuard();
+    });
+  }
+  if (tvdbApiInput) {
+    tvdbApiInput.addEventListener('input', syncSaveGuard);
   }
   if (easynewsUserInput) {
     easynewsUserInput.addEventListener('input', syncSaveGuard);
@@ -1534,6 +1554,7 @@
   syncSortingControls();
   syncStreamingModeControls();
   syncTmdbLanguageControls();
+  syncTvdbControls();
   syncManagerControls();
   syncNewznabControls();
   applyQualitySelectionsFromHidden();

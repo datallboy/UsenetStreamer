@@ -40,6 +40,7 @@ const indexerService = require('./src/services/indexer');
 const nzbdavService = require('./src/services/nzbdav');
 const specialMetadata = require('./src/services/specialMetadata');
 const tmdbService = require('./src/services/tmdb');
+const tvdbService = require('./src/services/tvdb');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
@@ -235,12 +236,21 @@ adminApiRouter.post('/config', async (req, res) => {
     runtimeEnv.updateRuntimeEnv(updates);
     runtimeEnv.applyRuntimeEnv();
 
+    const newznabConfigsForCaps = newznabService.getNewznabConfigsFromValues(incoming, { includeEmpty: false });
+    const capsCache = await newznabService.refreshCapsCache(newznabConfigsForCaps, { timeoutMs: 12000 });
+    console.log('[NEWZNAB][CAPS] Saved caps cache', capsCache);
+    runtimeEnv.updateRuntimeEnv({
+      NEWZNAB_CAPS_CACHE: Object.keys(capsCache).length > 0 ? JSON.stringify(capsCache) : ''
+    });
+    runtimeEnv.applyRuntimeEnv();
+
     // Debug: check process.env after apply
     console.log('[ADMIN] process.env.TMDB_API_KEY after apply:', process.env.TMDB_API_KEY ? `(${process.env.TMDB_API_KEY.length} chars)` : '(empty)');
 
     indexerService.reloadConfig();
     nzbdavService.reloadConfig();
     tmdbService.reloadConfig();
+    tvdbService.reloadConfig();
     if (typeof cache.reloadNzbdavCacheConfig === 'function') {
       cache.reloadNzbdavCacheConfig();
     }
@@ -292,6 +302,9 @@ adminApiRouter.post('/test-connections', async (req, res) => {
       }
       case 'tmdb':
         message = await testTmdbConnection(values);
+        break;
+      case 'tvdb':
+        message = await tvdbService.testTvdbConnection({ apiKey: values?.TVDB_API_KEY });
         break;
       default:
         res.status(400).json({ error: `Unknown test type: ${type}` });
@@ -886,6 +899,8 @@ const ADMIN_CONFIG_KEYS = [
   'TMDB_API_KEY',
   'TMDB_SEARCH_LANGUAGES',
   'TMDB_SEARCH_MODE',
+  'TVDB_ENABLED',
+  'TVDB_API_KEY',
 ];
 
 ADMIN_CONFIG_KEYS.push('NEWZNAB_ENABLED', 'NEWZNAB_FILTER_NZB_ONLY', ...NEWZNAB_NUMBERED_KEYS);
@@ -1368,6 +1383,27 @@ async function streamHandler(req, res) {
       }
     }
 
+    if (type === 'movie' && !incomingTmdbId && incomingImdbId && tmdbService.isConfigured()) {
+      const tmdbFind = await tmdbService.findByExternalId(incomingImdbId, 'imdb_id');
+      if (tmdbFind?.tmdbId && tmdbFind.mediaType === 'movie') {
+        incomingTmdbId = String(tmdbFind.tmdbId);
+      }
+    }
+
+    if (type === 'series' && tvdbService.isConfigured()) {
+      if (incomingTvdbId && !incomingImdbId) {
+        const tvdbLookup = await tvdbService.getImdbIdForSeries(incomingTvdbId);
+        if (tvdbLookup?.imdbId) {
+          incomingImdbId = tvdbLookup.imdbId.startsWith('tt') ? tvdbLookup.imdbId : `tt${tvdbLookup.imdbId}`;
+        }
+      } else if (incomingImdbId && !incomingTvdbId) {
+        const tvdbLookup = await tvdbService.getTvdbIdForSeries(incomingImdbId);
+        if (tvdbLookup?.tvdbId) {
+          incomingTvdbId = tvdbLookup.tvdbId;
+        }
+      }
+    }
+
     if (isNzbdavRequest) {
       if (STREAMING_MODE === 'native') {
         res.status(400).json({ error: 'NZBDav catalog is only available in NZBDav mode.' });
@@ -1525,6 +1561,9 @@ async function streamHandler(req, res) {
     const metaSources = [meta];
     if (incomingImdbId) {
       metaSources.push({ ids: { imdb: incomingImdbId }, imdb_id: incomingImdbId });
+    }
+    if (incomingTmdbId) {
+      metaSources.push({ ids: { tmdb: incomingTmdbId }, tmdb_id: String(incomingTmdbId) });
     }
     if (incomingTvdbId) {
       metaSources.push({ ids: { tvdb: incomingTvdbId }, tvdb_id: incomingTvdbId });
@@ -1787,15 +1826,21 @@ async function streamHandler(req, res) {
       };
 
       // Add ID-based searches immediately (before waiting for TMDb/Cinemeta)
-      if (type === 'series' && metaIds.tvdb) {
-        addPlan('tvsearch', { tokens: [`{TvdbId:${metaIds.tvdb}}`] });
-      }
-
-      if (metaIds.imdb && !(type === 'series' && metaIds.tvdb)) {
-        addPlan(searchType, { tokens: [`{ImdbId:${metaIds.imdb}}`] });
-      }
-
-      if (searchPlans.length === 0 && metaIds.imdb) {
+      if (type === 'series') {
+        if (metaIds.tvdb) {
+          addPlan('tvsearch', { tokens: [`{TvdbId:${metaIds.tvdb}}`] });
+        }
+        if (metaIds.imdb) {
+          addPlan('tvsearch', { tokens: [`{ImdbId:${metaIds.imdb}}`] });
+        }
+      } else if (type === 'movie') {
+        if (metaIds.imdb) {
+          addPlan('movie', { tokens: [`{ImdbId:${metaIds.imdb}}`] });
+        }
+        if (metaIds.tmdb) {
+          addPlan('movie', { tokens: [`{TmdbId:${metaIds.tmdb}}`] });
+        }
+      } else if (metaIds.imdb) {
         addPlan(searchType, { tokens: [`{ImdbId:${metaIds.imdb}}`] });
       }
 

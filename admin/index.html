@@ -589,6 +589,25 @@
         </section>
 
         <section class="group">
+          <h3>TVDB ID Mapping (Optional)</h3>
+          <p class="hint">Enable to resolve TVDB ↔ IMDb IDs for series. This improves ID-based searches when only one of the IDs is available.</p>
+          <label class="checkbox">
+            <input name="TVDB_ENABLED" type="checkbox" />
+            <span>Enable TVDB ID Mapping</span>
+          </label>
+          <div class="tmdb-row">
+            <label>TVDB API Key
+              <input name="TVDB_API_KEY" type="password" autocomplete="new-password" placeholder="tvdb_key" />
+              <span class="field-hint">Paste your TVDB v4 API key.</span>
+            </label>
+          </div>
+          <div class="inline-actions">
+            <button type="button" class="secondary" data-test="tvdb">Test Connection</button>
+            <span class="status-message" data-test-status="tvdb"></span>
+          </div>
+        </section>
+
+        <section class="group">
           <h3>Addon Metadata</h3>
           <div class="field-grid">
             <label>Addon Display Name
