@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { parseTorrentTitle } = require('../../utils/lib/parse-torrent-title/index.js');
 const { stripTrailingSlashes, toBoolean } = require('../../utils/config');
 
 const EASYNEWS_BASE_URL = 'https://members.easynews.com';
@@ -107,13 +108,24 @@ function matchesStrict(title, strictPhrase) {
   const candidateTokens = candidate.split(' ');
   const phraseTokens = strictPhrase.split(' ');
   if (!phraseTokens.length) return true;
-  for (let i = 0; i <= candidateTokens.length - phraseTokens.length; i += 1) {
-    const slice = candidateTokens.slice(i, i + phraseTokens.length);
-    if (slice.join(' ') === phraseTokens.join(' ')) {
-      return true;
+  // Nothing before first query token, nothing after last query token, gaps allowed in between
+  if (candidateTokens[0] !== phraseTokens[0]) return false;
+  if (candidateTokens[candidateTokens.length - 1] !== phraseTokens[phraseTokens.length - 1]) return false;
+  let candidateIdx = 1;
+  for (let i = 1; i < phraseTokens.length; i += 1) {
+    const token = phraseTokens[i];
+    let found = false;
+    while (candidateIdx < candidateTokens.length) {
+      if (candidateTokens[candidateIdx] === token) {
+        found = true;
+        candidateIdx += 1;
+        break;
+      }
+      candidateIdx += 1;
     }
+    if (!found) return false;
   }
-  return false;
+  return true;
 }
 
 function parseDurationSeconds(raw) {
@@ -365,8 +377,15 @@ function filterAndMap(jsonData, options) {
       return;
     }
 
-    if (strictMatch && strictPhrase && !matchesStrict(title, strictPhrase)) {
-      return;
+    if (strictMatch && strictPhrase) {
+      let parsedCandidateTitle = title;
+      try {
+        const parsed = parseTorrentTitle(title);
+        if (parsed?.title) parsedCandidateTitle = parsed.title;
+      } catch (_) { /* use raw title */ }
+      if (!matchesStrict(parsedCandidateTitle, strictPhrase)) {
+        return;
+      }
     }
 
     if (queryMeta) {

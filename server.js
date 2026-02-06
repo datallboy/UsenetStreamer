@@ -1124,9 +1124,13 @@ function matchesStrictSearch(title, strictPhrase) {
   const phraseTokens = strictPhrase.split(' ').filter(Boolean);
   if (phraseTokens.length === 0) return true;
 
-  // Relaxed matching: all phrase tokens must appear in order, but gaps allowed
-  let candidateIdx = 0;
-  for (const token of phraseTokens) {
+  // Nothing before first query token, nothing after last query token, gaps allowed in between
+  if (candidateTokens[0] !== phraseTokens[0]) return false;
+  if (candidateTokens[candidateTokens.length - 1] !== phraseTokens[phraseTokens.length - 1]) return false;
+  // Remaining tokens must appear in order, gaps allowed
+  let candidateIdx = 1;
+  for (let i = 1; i < phraseTokens.length; i += 1) {
+    const token = phraseTokens[i];
     let found = false;
     while (candidateIdx < candidateTokens.length) {
       if (candidateTokens[candidateIdx] === token) {
