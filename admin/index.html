@@ -77,6 +77,10 @@
               <input name="NZB_TRIAGE_PRIORITY_INDEXERS" type="text" placeholder="9,33" />
               <span class="field-hint">Comma-separated IDs/names of indexers where you have an active paid plan. Health checks only run against these.</span>
             </label>
+            <label data-manager-field>Grab limits per indexer (comma separated, same order)
+              <input name="NZB_TRIAGE_PRIORITY_INDEXER_LIMITS" type="text" placeholder="6,6" />
+              <span class="field-hint">Max NZBs to grab per request from each paid indexer above. Same order as the indexer list. Default: 6 per indexer.</span>
+            </label>
             <label class="checkbox">
               <input name="INDEXER_MANAGER_STRICT_ID_MATCH" type="checkbox" />
               <span>Strict ID Matching Only</span>

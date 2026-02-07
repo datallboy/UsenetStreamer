@@ -423,6 +423,37 @@ function buildPaidIndexerLimitMap(configs = ACTIVE_NEWZNAB_CONFIGS) {
   return limitMap;
 }
 
+function buildManagerIndexerLimitMap() {
+  const limitMap = new Map();
+  const indexers = TRIAGE_PRIORITY_INDEXERS || [];
+  const limits = TRIAGE_PRIORITY_INDEXER_LIMITS || [];
+  indexers.forEach((indexer, idx) => {
+    const token = normalizeIndexerToken(indexer);
+    if (!token) return;
+    const rawLimit = limits[idx];
+    const parsed = rawLimit !== undefined ? Number(String(rawLimit).trim()) : NaN;
+    const limit = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 6;
+    const existing = limitMap.get(token);
+    if (!existing || limit < existing) {
+      limitMap.set(token, limit);
+    }
+  });
+  return limitMap;
+}
+
+function buildCombinedLimitMap(configs = ACTIVE_NEWZNAB_CONFIGS) {
+  const newznabMap = buildPaidIndexerLimitMap(configs);
+  const managerMap = buildManagerIndexerLimitMap();
+  const combined = new Map(newznabMap);
+  managerMap.forEach((limit, token) => {
+    const existing = combined.get(token);
+    if (!existing || limit < existing) {
+      combined.set(token, limit);
+    }
+  });
+  return combined;
+}
+
 function buildSearchLogPrefix({ manager = INDEXER_MANAGER, managerLabel = INDEXER_MANAGER_LABEL, newznabEnabled = NEWZNAB_ENABLED } = {}) {
   const managerSegment = manager === 'none'
     ? 'mgr=OFF'
@@ -626,6 +657,7 @@ let TRIAGE_TIME_BUDGET_MS = toPositiveInt(process.env.NZB_TRIAGE_TIME_BUDGET_MS,
 let TRIAGE_MAX_CANDIDATES = toPositiveInt(process.env.NZB_TRIAGE_MAX_CANDIDATES, 25);
 let TRIAGE_DOWNLOAD_CONCURRENCY = toPositiveInt(process.env.NZB_TRIAGE_DOWNLOAD_CONCURRENCY, 8);
 let TRIAGE_PRIORITY_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXERS);
+let TRIAGE_PRIORITY_INDEXER_LIMITS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXER_LIMITS);
 let TRIAGE_HEALTH_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_HEALTH_INDEXERS);
 let TRIAGE_SERIALIZED_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_SERIALIZED_INDEXERS);
 let TRIAGE_ARCHIVE_DIRS = parsePathList(process.env.NZB_TRIAGE_ARCHIVE_DIRS);
@@ -788,6 +820,7 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   TRIAGE_MAX_CANDIDATES = toPositiveInt(process.env.NZB_TRIAGE_MAX_CANDIDATES, 25);
   TRIAGE_DOWNLOAD_CONCURRENCY = toPositiveInt(process.env.NZB_TRIAGE_DOWNLOAD_CONCURRENCY, 8);
   TRIAGE_PRIORITY_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXERS);
+  TRIAGE_PRIORITY_INDEXER_LIMITS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXER_LIMITS);
   TRIAGE_HEALTH_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_HEALTH_INDEXERS);
   TRIAGE_SERIALIZED_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_SERIALIZED_INDEXERS);
   refreshPaidIndexerTokens();
@@ -875,6 +908,7 @@ const ADMIN_CONFIG_KEYS = [
   'NZB_TRIAGE_TIME_BUDGET_MS',
   'NZB_TRIAGE_MAX_CANDIDATES',
   'NZB_TRIAGE_PRIORITY_INDEXERS',
+  'NZB_TRIAGE_PRIORITY_INDEXER_LIMITS',
   'NZB_TRIAGE_SERIALIZED_INDEXERS',
   'NZB_TRIAGE_DOWNLOAD_CONCURRENCY',
   'NZB_TRIAGE_MAX_CONNECTIONS',
@@ -2665,7 +2699,7 @@ async function streamHandler(req, res) {
     const hasPendingRetries = triagePool.some((candidate) => pendingStatuses.has(getDecisionStatus(candidate)));
     const hasVerifiedResult = triagePool.some((candidate) => getDecisionStatus(candidate) === 'verified');
     let triageEligibleResults = [];
-    const paidIndexerLimitMap = buildPaidIndexerLimitMap(ACTIVE_NEWZNAB_CONFIGS);
+    const paidIndexerLimitMap = buildCombinedLimitMap(ACTIVE_NEWZNAB_CONFIGS);
     const getIndexerKey = (candidate) => normalizeIndexerToken(candidate?.indexerId || candidate?.indexer);
 
     if (hasPendingRetries) {
