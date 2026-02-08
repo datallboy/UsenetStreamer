@@ -3761,3 +3761,17 @@ async function restartHttpServer() {
 
 startHttpServer();
 
+// Fetch real caps for all enabled indexers in the background at startup
+if (NEWZNAB_ENABLED && ACTIVE_NEWZNAB_CONFIGS.length > 0) {
+  newznabService.refreshCapsCache(ACTIVE_NEWZNAB_CONFIGS, { timeoutMs: 12000 })
+    .then((capsCache) => {
+      console.log('[NEWZNAB][CAPS] Startup caps loaded', Object.keys(capsCache));
+      if (Object.keys(capsCache).length > 0) {
+        runtimeEnv.updateRuntimeEnv({ NEWZNAB_CAPS_CACHE: JSON.stringify(capsCache) });
+        runtimeEnv.applyRuntimeEnv();
+      }
+    })
+    .catch((err) => {
+      console.warn('[NEWZNAB][CAPS] Startup caps fetch failed (using defaults)', err?.message || err);
+    });
+}

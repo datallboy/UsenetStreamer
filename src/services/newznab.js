@@ -342,7 +342,7 @@ async function fetchNewznabCaps(config, options = {}) {
 
 const DEFAULT_CAPS = {
   search: new Set(['q']),
-  tvsearch: new Set(['q', 'tvdbid', 'season', 'ep']),
+  tvsearch: new Set(['q', 'tvdbid', 'imdbid', 'season', 'ep']),
   movie: new Set(['q', 'imdbid']),
 };
 
@@ -524,6 +524,17 @@ function filterUsableConfigs(configs = [], { requireEnabled = true, requireApiKe
     return true;
   });
 }
+
+// Seed default caps for any enabled indexer that has no cached caps
+(function seedDefaultCaps() {
+  const configs = buildIndexerConfigs(process.env, { includeEmpty: false });
+  const eligible = filterUsableConfigs(configs, { requireEnabled: true, requireApiKey: true });
+  eligible.forEach((config) => {
+    if (!config.dedupeKey) return;
+    if (newznabCapsCache.has(config.dedupeKey)) return;
+    newznabCapsCache.set(config.dedupeKey, { supportedParams: getDefaultCaps(), fetchedAt: Date.now(), persisted: false });
+  });
+})();
 
 function applyTokenToParams(token, params) {
   if (!token || typeof token !== 'string') return;

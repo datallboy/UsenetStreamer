@@ -442,7 +442,7 @@
           </label>
           <label class="inline-select">
             <span>Grab limit</span>
-            <select data-field="PAID_LIMIT" class="small-select" disabled>
+            <select data-field="PAID_LIMIT" class="small-select">
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3">3</option>
@@ -515,13 +515,6 @@
     if (paidToggle) {
       paidToggle.addEventListener('change', () => {
         updateHealthPaidWarning();
-        if (paidLimitSelect) {
-          const isPaid = paidToggle.checked;
-          paidLimitSelect.disabled = !isPaid;
-          if (isPaid && !paidLimitSelect.value) {
-            paidLimitSelect.value = '6';
-          }
-        }
       });
     }
     if (testButton) testButton.addEventListener('click', () => runNewznabRowTest(row));
@@ -536,10 +529,6 @@
     if (endpointInput) {
       endpointInput.addEventListener('input', () => refreshRowApiKeyLink(row));
       endpointInput.addEventListener('blur', () => refreshRowApiKeyLink(row));
-    }
-
-    if (paidLimitSelect && paidToggle && paidToggle.checked) {
-      paidLimitSelect.disabled = false;
     }
 
     return row;
