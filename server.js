@@ -1964,6 +1964,31 @@ async function streamHandler(req, res) {
         }
       }
 
+      if (type === 'series' && !tvdbService.isConfigured() && cinemetaMeta && !metaIds.tvdb) {
+        const cinemetaTvdbId = normalizeNumericId(
+          cinemetaMeta?.ids?.tvdb
+          || cinemetaMeta?.tvdb_id
+          || cinemetaMeta?.tvdb
+        );
+        if (cinemetaTvdbId) {
+          metaIds.tvdb = cinemetaTvdbId;
+          const added = addPlan('tvsearch', { tokens: [`{TvdbId:${metaIds.tvdb}}`] });
+          if (added) {
+            console.log(`${INDEXER_LOG_PREFIX} Added Cinemeta TVDB ID plan`, { tvdb: metaIds.tvdb });
+            const planStartTs = Date.now();
+            idSearchPromises.push(Promise.allSettled([
+              executeManagerPlanWithBackoff(searchPlans[searchPlans.length - 1]),
+              executeNewznabPlan(searchPlans[searchPlans.length - 1]),
+            ]).then((settled) => ({
+              plan: searchPlans[searchPlans.length - 1],
+              settled,
+              startTs: planStartTs,
+              endTs: Date.now(),
+            })));
+          }
+        }
+      }
+
       if (!movieTitle) {
         movieTitle = pickFirstDefined(
           ...collectValues(
