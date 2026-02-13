@@ -384,8 +384,8 @@ let ADDON_SHARED_SECRET = (process.env.ADDON_SHARED_SECRET || '').trim();
 let ADDON_NAME = (process.env.ADDON_NAME || DEFAULT_ADDON_NAME).trim() || DEFAULT_ADDON_NAME;
 const DEFAULT_MAX_RESULT_SIZE_GB = 30;
 let NZBDAV_HISTORY_CATALOG_LIMIT = (() => {
-  const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 0);
-  if (!Number.isFinite(raw) || raw < 0) return 0;
+  const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 100);
+  if (!Number.isFinite(raw) || raw < 0) return 100;
   return Math.floor(raw);
 })();
 let INDEXER_MANAGER_BACKOFF_ENABLED = toBoolean(process.env.INDEXER_MANAGER_BACKOFF_ENABLED, true);
@@ -791,8 +791,8 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   INDEXER_MANAGER_BACKOFF_ENABLED = toBoolean(process.env.INDEXER_MANAGER_BACKOFF_ENABLED, true);
   INDEXER_MANAGER_BACKOFF_SECONDS = toPositiveInt(process.env.INDEXER_MANAGER_BACKOFF_SECONDS, 120);
   NZBDAV_HISTORY_CATALOG_LIMIT = (() => {
-    const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 0);
-    if (!Number.isFinite(raw) || raw < 0) return 0;
+    const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 100);
+    if (!Number.isFinite(raw) || raw < 0) return 100;
     return Math.floor(raw);
   })();
   indexerManagerUnavailableUntil = 0;
