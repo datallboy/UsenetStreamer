@@ -670,7 +670,6 @@ let TRIAGE_PRIORITY_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_IN
 let TRIAGE_PRIORITY_INDEXER_LIMITS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXER_LIMITS);
 let TRIAGE_HEALTH_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_HEALTH_INDEXERS);
 let TRIAGE_SERIALIZED_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_SERIALIZED_INDEXERS);
-let TRIAGE_ARCHIVE_DIRS = parsePathList(process.env.NZB_TRIAGE_ARCHIVE_DIRS);
 let TRIAGE_NNTP_CONFIG = buildTriageNntpConfig();
 let TRIAGE_MAX_DECODED_BYTES = toPositiveInt(process.env.NZB_TRIAGE_MAX_DECODED_BYTES, 32 * 1024);
 let TRIAGE_NNTP_MAX_CONNECTIONS = toPositiveInt(process.env.NZB_TRIAGE_MAX_CONNECTIONS, 12);
@@ -682,7 +681,6 @@ let TRIAGE_NNTP_KEEP_ALIVE_MS = toPositiveInt(process.env.NZB_TRIAGE_NNTP_KEEP_A
 let TRIAGE_PREFETCH_FIRST_VERIFIED = toBoolean(process.env.NZB_TRIAGE_PREFETCH_FIRST_VERIFIED, true);
 
 let TRIAGE_BASE_OPTIONS = {
-  archiveDirs: TRIAGE_ARCHIVE_DIRS,
   maxDecodedBytes: TRIAGE_MAX_DECODED_BYTES,
   nntpMaxConnections: TRIAGE_NNTP_MAX_CONNECTIONS,
   maxParallelNzbs: TRIAGE_MAX_PARALLEL_NZBS,
@@ -834,7 +832,6 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   TRIAGE_HEALTH_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_HEALTH_INDEXERS);
   TRIAGE_SERIALIZED_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_SERIALIZED_INDEXERS);
   refreshPaidIndexerTokens();
-  TRIAGE_ARCHIVE_DIRS = parsePathList(process.env.NZB_TRIAGE_ARCHIVE_DIRS);
   TRIAGE_NNTP_CONFIG = buildTriageNntpConfig();
   TRIAGE_MAX_DECODED_BYTES = toPositiveInt(process.env.NZB_TRIAGE_MAX_DECODED_BYTES, 32 * 1024);
   TRIAGE_NNTP_MAX_CONNECTIONS = toPositiveInt(process.env.NZB_TRIAGE_MAX_CONNECTIONS, 60);
@@ -842,7 +839,6 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   TRIAGE_REUSE_POOL = toBoolean(process.env.NZB_TRIAGE_REUSE_POOL, true);
   TRIAGE_NNTP_KEEP_ALIVE_MS = toPositiveInt(process.env.NZB_TRIAGE_NNTP_KEEP_ALIVE_MS, 0);
   TRIAGE_BASE_OPTIONS = {
-    archiveDirs: TRIAGE_ARCHIVE_DIRS,
     maxDecodedBytes: TRIAGE_MAX_DECODED_BYTES,
     nntpMaxConnections: TRIAGE_NNTP_MAX_CONNECTIONS,
     maxParallelNzbs: TRIAGE_MAX_PARALLEL_NZBS,
@@ -932,7 +928,6 @@ const ADMIN_CONFIG_KEYS = [
   'NZB_TRIAGE_NNTP_TLS',
   'NZB_TRIAGE_NNTP_USER',
   'NZB_TRIAGE_NNTP_PASS',
-  'NZB_TRIAGE_ARCHIVE_DIRS',
   'NZB_TRIAGE_REUSE_POOL',
   'NZB_TRIAGE_NNTP_KEEP_ALIVE_MS',
   'EASYNEWS_ENABLED',
@@ -3096,7 +3091,6 @@ async function streamHandler(req, res) {
         'rar-compressed',
         'rar-encrypted',
         'rar-solid',
-        'rar5-unsupported',
         'sevenzip-unsupported',
         'archive-not-found',
         'archive-no-segments',
