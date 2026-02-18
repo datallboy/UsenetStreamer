@@ -15,6 +15,9 @@ const ISO_FILE_EXTENSIONS = ['.iso'];
 const ARCHIVE_ONLY_MIN_PARTS = 10;
 const RAR4_SIGNATURE = Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]);
 const RAR5_SIGNATURE = Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01, 0x00]);
+const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
+const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ARCHIVE_SAMPLE_ENTRY_LIMIT = 5;
 
 const TRIAGE_ACTIVITY_TTL_MS = 5 * 60 * 1000; // 5 mins window for keep-alives
@@ -934,6 +937,10 @@ function inspectArchiveBuffer(buffer) {
     return inspectSevenZip(buffer);
   }
 
+  if (buffer.length >= 4 && buffer.readUInt32LE(0) === ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
+    return inspectZip(buffer);
+  }
+
   return { status: 'rar-header-not-found' };
 }
 
@@ -995,9 +1002,7 @@ function inspectRar4(buffer) {
       if (encrypted) return { status: 'rar-encrypted', details: { name, sampleEntries } };
       if (solid) return { status: 'rar-solid', details: { name, sampleEntries } };
       if (methodByte !== 0x30) {
-         // return { status: 'rar-compressed', details: { name, method: methodByte } };
-         // Don't return early! We need to scan all files to check for nested archives.
-         // But if we find a video file, we can stop and accept.
+        return { status: 'rar-compressed', details: { name, method: methodByte, sampleEntries } };
       }
 
       if (!storedDetails) {
@@ -1113,6 +1118,14 @@ function inspectRar5(buffer) {
 
             const compInfoRes = readRar5Vint(buffer, pos);
             if (compInfoRes) {
+              const compInfo = compInfoRes.value;
+              const methodCode = compInfo & 0x3F;
+              if (methodCode !== 0) {
+                return {
+                  status: 'rar-compressed',
+                  details: { method: methodCode, compInfo, format: 'rar5', sampleEntries },
+                };
+              }
               pos += compInfoRes.bytes;
 
               const hostOsRes = readRar5Vint(buffer, pos);
@@ -1188,6 +1201,81 @@ function readRar5Vint(buffer, offset) {
     if (shift > 50) break;
   }
   return null;
+}
+
+function inspectZip(buffer) {
+  let offset = 0;
+  let nestedArchiveCount = 0;
+  let playableEntryFound = false;
+  let storedDetails = null;
+  const sampleEntries = [];
+
+  while (offset + 4 <= buffer.length) {
+    const signature = buffer.readUInt32LE(offset);
+
+    if (signature === ZIP_CENTRAL_DIRECTORY_SIGNATURE || signature === ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+      break;
+    }
+
+    if (signature !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
+      break;
+    }
+
+    if (offset + 30 > buffer.length) return { status: 'rar-insufficient-data' };
+
+    const flags = buffer.readUInt16LE(offset + 6);
+    const method = buffer.readUInt16LE(offset + 8);
+    const compressedSize = buffer.readUInt32LE(offset + 18);
+    const nameLength = buffer.readUInt16LE(offset + 26);
+    const extraLength = buffer.readUInt16LE(offset + 28);
+
+    const headerEnd = offset + 30 + nameLength + extraLength;
+    if (headerEnd > buffer.length) return { status: 'rar-insufficient-data' };
+
+    const name = buffer.slice(offset + 30, offset + 30 + nameLength).toString('utf8').replace(/\0/g, '');
+    recordSampleEntry(sampleEntries, name);
+
+    if (!storedDetails) {
+      storedDetails = { name, method, format: 'zip' };
+    }
+
+    if (isIsoFileName(name)) {
+      return { status: 'rar-iso-image', details: { name, sampleEntries } };
+    }
+
+    if ((flags & 0x0001) !== 0) {
+      return { status: 'rar-encrypted', details: { name, format: 'zip', sampleEntries } };
+    }
+
+    if (method !== 0) {
+      return { status: 'rar-compressed', details: { name, method, format: 'zip', sampleEntries } };
+    }
+
+    if (isVideoFileName(name)) {
+      playableEntryFound = true;
+    } else if (isArchiveEntryName(name)) {
+      nestedArchiveCount += 1;
+    }
+
+    if (compressedSize === 0xFFFFFFFF) return { status: 'rar-insufficient-data' };
+
+    const nextOffset = headerEnd + compressedSize;
+    if (nextOffset <= offset) return { status: 'rar-insufficient-data' };
+    if (nextOffset > buffer.length) return { status: 'rar-insufficient-data' };
+    offset = nextOffset;
+  }
+
+  if (storedDetails) {
+    if (nestedArchiveCount > 0 && !playableEntryFound) {
+      return {
+        status: 'rar-nested-archive',
+        details: { nestedEntries: nestedArchiveCount, sampleEntries },
+      };
+    }
+    return { status: 'rar-stored', details: { ...storedDetails, sampleEntries } };
+  }
+
+  return { status: 'rar-header-not-found' };
 }
 
 function inspectSevenZip(buffer) {
