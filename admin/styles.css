@@ -704,6 +704,45 @@ button.ghost.danger:hover {
   background: rgba(8, 16, 26, 0.6);
 }
 
+.sort-order-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.sort-order-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(86, 110, 135, 0.28);
+  background: rgba(8, 16, 26, 0.8);
+}
+
+.sort-order-grid .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.sort-order-index {
+  margin-left: auto;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  line-height: 1;
+  color: #c7def8;
+  background: rgba(57, 121, 255, 0.28);
+}
+
+.sort-order-index:empty {
+  display: none;
+}
 .language-header {
   display: flex;
   flex-direction: column;

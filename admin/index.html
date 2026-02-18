@@ -171,13 +171,23 @@
         <section class="group">
           <h3>Result Sorting &amp; Filters</h3>
           <div class="field-grid">
-            <label>Sorting Mode
-              <select name="NZB_SORT_MODE">
-                <option value="quality_then_size">Quality → Size</option>
-                <option value="language_quality_size">Preferred Language → Quality → Size</option>
-              </select>
-              <span class="field-hint">Choose how releases are prioritized before NZB health checks run.</span>
-            </label>
+            <div class="sort-order-builder wide-field" data-sort-order-builder>
+              <span class="field-label">Sorting Priority (optional)</span>
+              <input type="hidden" name="NZB_SORT_ORDER" data-sort-order-hidden />
+              <div class="sort-order-grid">
+                <label class="checkbox"><input type="checkbox" value="language" data-sort-order-option /> <span>Language</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="release_group" data-sort-order-option /> <span>Release Group</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="size" data-sort-order-option /> <span>Size</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="resolution" data-sort-order-option /> <span>Resolution</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="quality" data-sort-order-option /> <span>Quality</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="encode" data-sort-order-option /> <span>Encode</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="visual_tag" data-sort-order-option /> <span>Visual Tag</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="audio_tag" data-sort-order-option /> <span>Audio Tag</span> <span class="sort-order-index" data-sort-order-index></span></label>
+                <label class="checkbox"><input type="checkbox" value="keyword" data-sort-order-option /> <span>Keyword</span> <span class="sort-order-index" data-sort-order-index></span></label>
+              </div>
+              <span class="field-hint">Select keys in your preferred order. First selected key has highest priority.</span>
+              <span class="field-hint" data-sort-order-current></span>
+            </div>
             <div class="language-multiselect wide-field" data-language-selector>
               <span class="field-label">Preferred Languages</span>
               <input type="hidden" name="NZB_PREFERRED_LANGUAGE" data-language-hidden />
@@ -351,6 +361,34 @@
               </div>
             </details>
           </div>
+          <div class="advanced-filters">
+            <div class="advanced-filters-header">
+              <span>Release Preferences (Optional)</span>
+              <span class="field-hint">These preferences are used by Sorting Priority when the matching key is present.</span>
+            </div>
+            <div class="field-grid">
+              <label>Preferred Quality Source (optional)
+                <input name="NZB_PREFERRED_QUALITIES" type="text" placeholder="e.g. remux,bluray,web-dl" />
+                <span class="field-hint">Quality here means source/release type (e.g. REMUX, BluRay, WEB-DL), not resolution.</span>
+              </label>
+              <label>Preferred Encodes (optional)
+                <input name="NZB_PREFERRED_ENCODES" type="text" placeholder="e.g. hevc,avc,x265,x264" />
+              </label>
+              <label>Preferred Release Groups (optional)
+                <input name="NZB_PREFERRED_RELEASE_GROUPS" type="text" placeholder="e.g. CtrlHD,FraMeSToR" />
+              </label>
+              <label>Preferred Visual Tags (optional)
+                <input name="NZB_PREFERRED_VISUAL_TAGS" type="text" placeholder="e.g. dv,hdr10+,hdr" />
+              </label>
+              <label>Preferred Audio Tags (optional)
+                <input name="NZB_PREFERRED_AUDIO_TAGS" type="text" placeholder="e.g. atmos,truehd,dts" />
+              </label>
+              <label class="wide-field">Preferred Keywords (optional)
+                <input name="NZB_PREFERRED_KEYWORDS" type="text" placeholder="e.g. criterion,extended,proper" />
+                <span class="field-hint">Comma-separated title keywords used in custom sorting only.</span>
+              </label>
+            </div>
+          </div>
         </section>
 
         <section class="group">
@@ -358,12 +396,22 @@
           <p class="hint">Customize how streams appear in Stremio. Leave blank to use the default. Easiest way: enter a comma-separated list of fields.</p>
           <div class="field-grid">
             <label class="wide-field">Stream Label Fields (Short Name)
-              <textarea name="NZB_DISPLAY_NAME_PATTERN" class="pattern-input" rows="2" placeholder='addon, instant, health, quality'></textarea>
-              <span class="field-hint">Comma-separated fields. Example: <code>addon, instant, health, quality</code>. Advanced templates are still supported if you use <code>{...}</code>.</span>
+              <textarea name="NZB_DISPLAY_NAME_PATTERN" class="pattern-input" rows="2" placeholder='addon, health, instant, resolution'></textarea>
+              <span class="field-hint">Comma-separated fields. Example: <code>addon, health, instant, resolution</code>. Compatibility: <code>quality</code> = resolution+quality summary, use <code>stream_quality</code> for actual parsed quality only. Advanced templates are still supported if you use <code>{...}</code>.</span>
             </label>
             <label class="wide-field">Description Fields (Long Title)
-              <textarea name="NZB_NAMING_PATTERN" class="pattern-input" rows="6" placeholder='filename, source, codec, visual, audio, group, size, languages, indexer'></textarea>
-              <span class="field-hint">Comma-separated fields. Example: <code>filename, source, codec, visual, audio, group, size, languages, indexer</code>. Advanced templates are still supported if you use <code>{...}</code>.</span>
+              <textarea name="NZB_NAMING_PATTERN" class="pattern-input" rows="6" placeholder='title,
+stream_quality,
+source,
+codec,
+visual,
+audio,
+group,
+size,
+languages,
+indexer,
+health'></textarea>
+              <span class="field-hint">Comma-separated fields. Example: <code>title, stream_quality, health, source, codec, visual, audio, group, size, languages, indexer</code>. Use <code>quality</code> for backward-compatible resolution+quality summary. Advanced templates are still supported if you use <code>{...}</code>.</span>
             </label>
             <div class="wide-field preview-card">
               <div class="preview-header">
@@ -371,8 +419,9 @@
                 <span>EXAMPLE</span>
               </div>
               <div class="preview-item">
-                <span class="preview-label" id="previewShortName">UsenetStreamer ⚡ ✅ 4K</span>
-                <div class="preview-desc" id="previewDescription">📄 Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-FLUX.mkv
+                <span class="preview-label" id="previewShortName">UsenetStreamer ✅ ⚡ 4K</span>
+                <div class="preview-desc" id="previewDescription">🎬 Dune Part Two
+✨ WEB-DL
 🎥 WEB-DL
 🎞️ x265
 📺 HDR | DV
@@ -380,7 +429,8 @@
 👥 FLUX
 📦 15.4 GB
 🌎 English
-🔎 NZBGeek</div>
+🔎 NZBGeek
+🧪 ✅</div>
               </div>
             </div>
           </div>

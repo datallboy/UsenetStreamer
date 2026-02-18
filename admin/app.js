@@ -22,6 +22,9 @@
   const tmdbLanguageHiddenInput = configForm.querySelector('[data-tmdb-language-hidden]');
   const tmdbLanguageCheckboxes = Array.from(configForm.querySelectorAll('input[data-tmdb-language-option]'));
   const tmdbLanguageSelector = configForm.querySelector('[data-tmdb-language-selector]');
+  const sortOrderHiddenInput = configForm.querySelector('[data-sort-order-hidden]');
+  const sortOrderOptions = Array.from(configForm.querySelectorAll('input[data-sort-order-option]'));
+  const sortOrderCurrentHint = configForm.querySelector('[data-sort-order-current]');
   const tmdbEnabledToggle = configForm.querySelector('input[name="TMDB_ENABLED"]');
   const tmdbApiInput = configForm.querySelector('input[name="TMDB_API_KEY"]');
   const tmdbTestButton = configForm.querySelector('button[data-test="tmdb"]');
@@ -41,9 +44,23 @@
   let runtimeEnvPath = null;
   let allowNewznabTestSearch = false;
   let newznabPresets = [];
+  let activeSortOrder = [];
+  let loadedSortMode = 'quality_then_size';
 
   const MAX_NEWZNAB_INDEXERS = 20;
   const NEWZNAB_SUFFIXES = ['ENDPOINT', 'API_KEY', 'API_PATH', 'NAME', 'INDEXER_ENABLED', 'PAID', 'PAID_LIMIT', 'ZYCLOPS'];
+  const SUPPORTED_SORT_KEYS = ['language', 'release_group', 'size', 'resolution', 'quality', 'encode', 'visual_tag', 'audio_tag', 'keyword'];
+  const SORT_LABELS = {
+    language: 'Language',
+    release_group: 'Release Group',
+    size: 'Size',
+    resolution: 'Resolution',
+    quality: 'Quality',
+    encode: 'Encode',
+    visual_tag: 'Visual Tag',
+    audio_tag: 'Audio Tag',
+    keyword: 'Keyword',
+  };
 
   const managerSelect = configForm.querySelector('select[name="INDEXER_MANAGER"]');
   const newznabList = document.getElementById('newznab-indexers-list');
@@ -285,6 +302,52 @@
       checkbox.checked = selectedSet.has(checkbox.value);
     });
     syncLanguageHiddenInput();
+  }
+
+  function parseSortOrder(raw) {
+    const seen = new Set();
+    return (raw || '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => {
+        if (!value || !SUPPORTED_SORT_KEYS.includes(value) || seen.has(value)) return false;
+        seen.add(value);
+        return true;
+      });
+  }
+
+  function getDefaultSortOrder() {
+    return loadedSortMode === 'language_quality_size'
+      ? ['language', 'resolution', 'size']
+      : ['resolution', 'size'];
+  }
+
+  function syncSortOrderUI() {
+    if (sortOrderHiddenInput) {
+      sortOrderHiddenInput.value = activeSortOrder.join(',');
+    }
+    const displayOrder = activeSortOrder.length > 0 ? activeSortOrder : getDefaultSortOrder();
+    sortOrderOptions.forEach((option) => {
+      const key = (option.value || '').trim().toLowerCase();
+      const index = displayOrder.indexOf(key);
+      option.checked = index !== -1;
+      const label = option.closest('label');
+      const badge = label ? label.querySelector('[data-sort-order-index]') : null;
+      if (badge) {
+        badge.textContent = index === -1 ? '' : String(index + 1);
+      }
+    });
+  }
+
+  function setSortOrder(order) {
+    activeSortOrder = parseSortOrder(Array.isArray(order) ? order.join(',') : String(order || ''));
+    syncSortOrderUI();
+    syncSortingControls();
+  }
+
+  function applySortOrderFromHidden() {
+    if (!sortOrderHiddenInput) return;
+    setSortOrder(sortOrderHiddenInput.value || '');
   }
 
   function hasManagerConfigured() {
@@ -797,6 +860,7 @@
     try {
       const data = await apiRequest('/admin/api/config');
       const values = data.values || {};
+      loadedSortMode = (values.NZB_SORT_MODE || 'quality_then_size').toString().trim().toLowerCase();
       setAvailableNewznabPresets(data?.newznabPresets || []);
       updateVersionBadge(data?.addonVersion);
       allowNewznabTestSearch = Boolean(data?.debugNewznabSearch);
@@ -805,6 +869,7 @@
       setupPatternPreview(); // Initialize preview with loaded values
       applyLanguageSelectionsFromHidden();
       applyQualitySelectionsFromHidden();
+      applySortOrderFromHidden();
       applyTmdbLanguageSelectionsFromHidden();
       refreshNewznabFieldNames();
       syncHealthControls();
@@ -1001,16 +1066,12 @@
   }
 
   function syncSortingControls() {
-    if (!sortingModeSelect || !languageHiddenInput) return;
-    const requiresLanguage = sortingModeSelect.value === 'language_quality_size';
-    if (requiresLanguage) {
-      languageHiddenInput.setAttribute('required', 'required');
-    } else {
-      languageHiddenInput.removeAttribute('required');
-    }
-    if (languageSelector) {
-      languageSelector.classList.toggle('language-required', requiresLanguage);
-    }
+    if (!sortOrderCurrentHint) return;
+    const effective = activeSortOrder.length > 0 ? activeSortOrder : getDefaultSortOrder();
+    const label = effective.map((key) => SORT_LABELS[key] || key).join(' → ');
+    sortOrderCurrentHint.textContent = activeSortOrder.length > 0
+      ? `Current sorting: ${label}`
+      : `Current sorting (default): ${label}`;
   }
 
   function syncManagerControls() {
@@ -1173,7 +1234,6 @@
   configForm.addEventListener('submit', saveConfiguration);
 
   const testButtons = configForm.querySelectorAll('button[data-test]');
-  const sortingModeSelect = configForm.querySelector('select[name="NZB_SORT_MODE"]');
   testButtons.forEach((button) => {
     button.addEventListener('click', () => runConnectionTest(button));
   });
@@ -1199,13 +1259,23 @@
   if (triageConnectionsInput) {
     triageConnectionsInput.addEventListener('input', enforceConnectionLimit);
   }
-  if (sortingModeSelect) {
-    sortingModeSelect.addEventListener('change', syncSortingControls);
-  }
   languageCheckboxes.forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
       syncLanguageHiddenInput();
       syncSortingControls();
+      syncSaveGuard();
+    });
+  });
+
+  sortOrderOptions.forEach((option) => {
+    option.addEventListener('change', () => {
+      const key = (option.value || '').trim().toLowerCase();
+      const baseOrder = activeSortOrder.length > 0 ? activeSortOrder : getDefaultSortOrder();
+      const next = baseOrder.filter((entry) => entry !== key);
+      if (option.checked) {
+        next.push(key);
+      }
+      setSortOrder(next);
       syncSaveGuard();
     });
   });
@@ -1385,7 +1455,9 @@
         private: false,
         resolution: '2160p',
         upscaled: false,
-        quality: '4K',
+        quality: 'WEB-DL',
+        streamQuality: 'WEB-DL',
+        resolutionQuality: '4K WEB-DL DV HDR',
         encode: 'x265',
         type: 'movie',
         visualTags: ['HDR', 'DV'],
@@ -1414,16 +1486,17 @@
       }
     };
 
-    const defaultShortPattern = 'addon, health, instant, quality';
-    const defaultDescPattern = 'title,\nsource,\ncodec,\nvisual,\naudio,\ngroup,\nsize,\nlanguages,\nindexer';
+    const defaultShortPattern = 'addon, health, instant, resolution';
+    const defaultDescPattern = 'title,\nstream_quality,\nsource,\ncodec,\nvisual,\naudio,\ngroup,\nsize,\nlanguages,\nindexer,\nhealth';
     const legacyDescPattern = 'filename,\nsource,\ncodec,\nvisual,\naudio,\ngroup,\nsize,\nlanguages,\nindexer';
+    const previousDefaultDescPattern = 'title,\nsource,\ncodec,\nvisual,\naudio,\ngroup,\nsize,\nlanguages,\nindexer';
 
     if (shortInput && !shortInput.value.trim()) {
       shortInput.value = defaultShortPattern;
     }
     if (descInput) {
       const currentDesc = descInput.value.trim();
-      if (!currentDesc || currentDesc === legacyDescPattern) {
+      if (!currentDesc || currentDesc === legacyDescPattern || currentDesc === previousDefaultDescPattern) {
         descInput.value = defaultDescPattern;
       }
     }
@@ -1448,7 +1521,9 @@
             title: '{stream.title::exists["{stream.title}"||""]}',
             instant: '{stream.instant::istrue["⚡"||""]}',
             health: '{stream.health::exists["{stream.health}"||""]}',
-            quality: '{stream.quality::exists["{stream.quality}"||""]}',
+            quality: '{stream.resolutionQuality::exists["{stream.resolutionQuality}"||""]}',
+            resolution_quality: '{stream.resolutionQuality::exists["{stream.resolutionQuality}"||""]}',
+            stream_quality: '{stream.streamQuality::exists["{stream.streamQuality}"||""]}',
             resolution: '{stream.resolution::exists["{stream.resolution}"||""]}',
             source: '{stream.source::exists["{stream.source}"||""]}',
             codec: '{stream.encode::exists["{stream.encode}"||""]}',
@@ -1474,7 +1549,9 @@
             indexer: '{stream.indexer::exists["🔎 {stream.indexer}"||""]}',
             health: '{stream.health::exists["🧪 {stream.health}"||""]}',
             instant: '{stream.instant::istrue["⚡ Instant"||""]}',
-            quality: '{stream.quality::exists["✨ {stream.quality}"||""]}',
+            quality: '{stream.resolutionQuality::exists["✨ {stream.resolutionQuality}"||""]}',
+            resolution_quality: '{stream.resolutionQuality::exists["✨ {stream.resolutionQuality}"||""]}',
+            stream_quality: '{stream.streamQuality::exists["✨ {stream.streamQuality}"||""]}',
             tags: '{tags::exists["🏷️ {tags}"||""]}',
           };
 
@@ -1502,7 +1579,9 @@
         title: '{stream.title::exists["{stream.title}"||""]}',
         instant: '{stream.instant::istrue["⚡"||""]}',
         health: '{stream.health::exists["{stream.health}"||""]}',
-        quality: '{stream.quality::exists["{stream.quality}"||""]}',
+        quality: '{stream.resolutionQuality::exists["{stream.resolutionQuality}"||""]}',
+        resolution_quality: '{stream.resolutionQuality::exists["{stream.resolutionQuality}"||""]}',
+        stream_quality: '{stream.streamQuality::exists["{stream.streamQuality}"||""]}',
         resolution: '{stream.resolution::exists["{stream.resolution}"||""]}',
         source: '{stream.source::exists["{stream.source}"||""]}',
         codec: '{stream.encode::exists["{stream.encode}"||""]}',
@@ -1528,7 +1607,9 @@
         indexer: '{stream.indexer::exists["🔎 {stream.indexer}"||""]}',
         health: '{stream.health::exists["🧪 {stream.health}"||""]}',
         instant: '{stream.instant::istrue["⚡ Instant"||""]}',
-        quality: '{stream.quality::exists["✨ {stream.quality}"||""]}',
+        quality: '{stream.resolutionQuality::exists["✨ {stream.resolutionQuality}"||""]}',
+        resolution_quality: '{stream.resolutionQuality::exists["✨ {stream.resolutionQuality}"||""]}',
+        stream_quality: '{stream.streamQuality::exists["✨ {stream.streamQuality}"||""]}',
         tags: '{tags::exists["🏷️ {tags}"||""]}',
       };
 

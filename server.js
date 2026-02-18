@@ -649,7 +649,14 @@ function buildNntpServersArray() {
 }
 
 let INDEXER_SORT_MODE = normalizeSortMode(process.env.NZB_SORT_MODE, 'quality_then_size');
+let INDEXER_SORT_ORDER = parseCommaList(process.env.NZB_SORT_ORDER);
 let INDEXER_PREFERRED_LANGUAGES = resolvePreferredLanguages(process.env.NZB_PREFERRED_LANGUAGE, []);
+let INDEXER_PREFERRED_QUALITIES = parseCommaList(process.env.NZB_PREFERRED_QUALITIES);
+let INDEXER_PREFERRED_ENCODES = parseCommaList(process.env.NZB_PREFERRED_ENCODES);
+let INDEXER_PREFERRED_RELEASE_GROUPS = parseCommaList(process.env.NZB_PREFERRED_RELEASE_GROUPS);
+let INDEXER_PREFERRED_VISUAL_TAGS = parseCommaList(process.env.NZB_PREFERRED_VISUAL_TAGS);
+let INDEXER_PREFERRED_AUDIO_TAGS = parseCommaList(process.env.NZB_PREFERRED_AUDIO_TAGS);
+let INDEXER_PREFERRED_KEYWORDS = parseCommaList(process.env.NZB_PREFERRED_KEYWORDS);
 let INDEXER_DEDUP_ENABLED = toBoolean(process.env.NZB_DEDUP_ENABLED, true);
 let INDEXER_HIDE_BLOCKED_RESULTS = toBoolean(process.env.NZB_HIDE_BLOCKED_RESULTS, false);
 let INDEXER_MAX_RESULT_SIZE_BYTES = toSizeBytesFromGb(
@@ -809,7 +816,14 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   });
 
   INDEXER_SORT_MODE = normalizeSortMode(process.env.NZB_SORT_MODE, 'quality_then_size');
+  INDEXER_SORT_ORDER = parseCommaList(process.env.NZB_SORT_ORDER);
   INDEXER_PREFERRED_LANGUAGES = resolvePreferredLanguages(process.env.NZB_PREFERRED_LANGUAGE, []);
+  INDEXER_PREFERRED_QUALITIES = parseCommaList(process.env.NZB_PREFERRED_QUALITIES);
+  INDEXER_PREFERRED_ENCODES = parseCommaList(process.env.NZB_PREFERRED_ENCODES);
+  INDEXER_PREFERRED_RELEASE_GROUPS = parseCommaList(process.env.NZB_PREFERRED_RELEASE_GROUPS);
+  INDEXER_PREFERRED_VISUAL_TAGS = parseCommaList(process.env.NZB_PREFERRED_VISUAL_TAGS);
+  INDEXER_PREFERRED_AUDIO_TAGS = parseCommaList(process.env.NZB_PREFERRED_AUDIO_TAGS);
+  INDEXER_PREFERRED_KEYWORDS = parseCommaList(process.env.NZB_PREFERRED_KEYWORDS);
   INDEXER_DEDUP_ENABLED = toBoolean(process.env.NZB_DEDUP_ENABLED, true);
   INDEXER_HIDE_BLOCKED_RESULTS = toBoolean(process.env.NZB_HIDE_BLOCKED_RESULTS, false);
   INDEXER_MAX_RESULT_SIZE_BYTES = toSizeBytesFromGb(
@@ -888,7 +902,14 @@ const ADMIN_CONFIG_KEYS = [
   'INDEXER_MANAGER_INDEXERS',
   'INDEXER_MANAGER_CACHE_MINUTES',
   'NZB_SORT_MODE',
+  'NZB_SORT_ORDER',
   'NZB_PREFERRED_LANGUAGE',
+  'NZB_PREFERRED_QUALITIES',
+  'NZB_PREFERRED_ENCODES',
+  'NZB_PREFERRED_RELEASE_GROUPS',
+  'NZB_PREFERRED_VISUAL_TAGS',
+  'NZB_PREFERRED_AUDIO_TAGS',
+  'NZB_PREFERRED_KEYWORDS',
   'NZB_MAX_RESULT_SIZE_GB',
   'NZB_DEDUP_ENABLED',
   'NZB_HIDE_BLOCKED_RESULTS',
@@ -2660,11 +2681,24 @@ async function streamHandler(req, res) {
     })();
     const resolvedPreferredLanguages = resolvePreferredLanguages(triageOverrides.preferredLanguages, INDEXER_PREFERRED_LANGUAGES);
     const activeSortMode = triageOverrides.sortMode || INDEXER_SORT_MODE;
+    const resolvedSortOrder = INDEXER_SORT_ORDER.length > 0
+      ? INDEXER_SORT_ORDER
+      : (activeSortMode === 'language_quality_size'
+        ? ['language', 'resolution', 'size']
+        : ['resolution', 'size']);
+    const effectiveSortMode = resolvedSortOrder.length > 0 ? 'custom_priority' : activeSortMode;
 
     finalNzbResults = finalNzbResults.map((result, index) => annotateNzbResult(result, index));
     finalNzbResults = prepareSortedResults(finalNzbResults, {
-      sortMode: activeSortMode,
+      sortMode: effectiveSortMode,
+      sortOrder: resolvedSortOrder,
       preferredLanguages: resolvedPreferredLanguages,
+      preferredQualities: INDEXER_PREFERRED_QUALITIES,
+      preferredEncodes: INDEXER_PREFERRED_ENCODES,
+      preferredReleaseGroups: INDEXER_PREFERRED_RELEASE_GROUPS,
+      preferredVisualTags: INDEXER_PREFERRED_VISUAL_TAGS,
+      preferredAudioTags: INDEXER_PREFERRED_AUDIO_TAGS,
+      preferredKeywords: INDEXER_PREFERRED_KEYWORDS,
       maxSizeBytes: effectiveMaxSizeBytes,
       releaseExclusions: RELEASE_EXCLUSIONS,
       allowedResolutions: ALLOWED_RESOLUTIONS,
@@ -2994,8 +3028,9 @@ async function streamHandler(req, res) {
         || releaseInfo.resolution
         || (qualityMatch ? normalizeResolutionToken(qualityMatch[0]) : null);
       const resolutionBadge = formatResolutionBadge(detectedResolutionToken);
-      const qualityLabel = releaseInfo.qualityLabel && releaseInfo.qualityLabel !== detectedResolutionToken
-        ? releaseInfo.qualityLabel
+      const rawQualityLabel = result.qualityLabel || releaseInfo.qualityLabel || null;
+      const qualityLabel = rawQualityLabel && String(rawQualityLabel).toLowerCase() !== String(detectedResolutionToken || '').toLowerCase()
+        ? rawQualityLabel
         : null;
       const featureBadges = extractQualityFeatureBadges(result.title || '');
       const qualityParts = [];
@@ -3005,7 +3040,7 @@ async function streamHandler(req, res) {
         if (!qualityParts.includes(badge)) qualityParts.push(badge);
       });
       const qualitySummary = qualityParts.join(' ');
-      const quality = resolutionBadge || qualityLabel || '';
+      const quality = qualityLabel || '';
       const languageLabel = releaseLanguageLabels.length > 0
         ? releaseLanguageLabels.join(', ')
         : (sourceLanguageLabel || null);
@@ -3176,7 +3211,7 @@ async function streamHandler(req, res) {
         filename: normalizedFilename || '',
         indexer: result.indexer || '',
         size: sizeString || '',
-        quality: qualitySummary || quality || '',
+        quality: quality || '',
         source: result.source || releaseInfo.source || '',
         codec: result.codec || releaseInfo.codec || '',
         group: result.group || releaseInfo.group || '',
@@ -3196,7 +3231,10 @@ async function streamHandler(req, res) {
         private: false, // Public Usenet
         resolution: namingContext.resolution,
         upscaled: false, // We don't detect upscaling yet
-        quality: quality || namingContext.resolution,
+        quality: namingContext.quality,
+        qualitySummary,
+        streamQuality: namingContext.quality,
+        resolutionQuality: qualitySummary || namingContext.resolution,
         encode: namingContext.codec,
         type: type || 'movie',
         visualTags: (result.hdrList || releaseInfo.hdrList || []),
@@ -3250,7 +3288,9 @@ async function streamHandler(req, res) {
           title: '{stream.title::exists["{stream.title}"||""]}',
           instant: '{stream.instant::istrue["⚡"||""]}',
           health: '{stream.health::exists["{stream.health}"||""]}',
-          quality: '{stream.quality::exists["{stream.quality}"||""]}',
+          quality: '{stream.resolutionQuality::exists["{stream.resolutionQuality}"||""]}',
+          resolution_quality: '{stream.resolutionQuality::exists["{stream.resolutionQuality}"||""]}',
+          stream_quality: '{stream.streamQuality::exists["{stream.streamQuality}"||""]}',
           resolution: '{stream.resolution::exists["{stream.resolution}"||""]}',
           source: '{stream.source::exists["{stream.source}"||""]}',
           codec: '{stream.encode::exists["{stream.encode}"||""]}',
@@ -3276,7 +3316,9 @@ async function streamHandler(req, res) {
           indexer: '{stream.indexer::exists["🔎 {stream.indexer}"||""]}',
           health: '{stream.health::exists["🧪 {stream.health}"||""]}',
           instant: '{stream.instant::istrue["⚡ Instant"||""]}',
-          quality: '{stream.quality::exists["✨ {stream.quality}"||""]}',
+          quality: '{stream.resolutionQuality::exists["✨ {stream.resolutionQuality}"||""]}',
+          resolution_quality: '{stream.resolutionQuality::exists["✨ {stream.resolutionQuality}"||""]}',
+          stream_quality: '{stream.streamQuality::exists["✨ {stream.streamQuality}"||""]}',
           tags: '{tags::exists["🏷️ {tags}"||""]}',
         };
 
@@ -3313,12 +3355,14 @@ async function streamHandler(req, res) {
 
       // Default AIOStreams template
       const defaultDescriptionPattern = '{stream.title::exists["🎬 {stream.title}\n"||""]}{stream.source::exists["🎥 {stream.source} "||""]}{stream.encode::exists["🎞️ {stream.encode}\n"||"\n"]}{stream.visualTags::join(\' | \')::exists["📺 {stream.visualTags::join(\' | \')}\n"||""]}{stream.audioTags::join(\' \')::exists["🎧 {stream.audioTags::join(\' \')}\n"||""]}{stream.releaseGroup::exists["👥 {stream.releaseGroup}\n"||""]}{stream.size::>0["📦 {stream.size::bytes}\n"||""]}{stream.languages::join(\' \')::exists["🌎 {stream.languages::join(\' \')}\n"||""]}{stream.indexer::exists["🔎 {stream.indexer}"||""]}';
-      const effectiveDescriptionPattern = buildPatternFromTokenList(NZB_NAMING_PATTERN, 'long', defaultDescriptionPattern);
-      const formattedTitle = formatStreamTitle(effectiveDescriptionPattern, namingContext, defaultDescriptionPattern);
+      const effectiveDefaultDescriptionPattern = `{stream.title::exists["🎬 {stream.title}\n"||""]}{stream.streamQuality::exists["✨ {stream.streamQuality}\n"||""]}{stream.source::exists["🎥 {stream.source}\n"||""]}{stream.encode::exists["🎞️ {stream.encode}\n"||""]}{stream.visualTags::join(" | ")::exists["📺 {stream.visualTags::join(\" | \")}\n"||""]}{stream.audioTags::join(" ")::exists["🎧 {stream.audioTags::join(\" \")}\n"||""]}{stream.releaseGroup::exists["👥 {stream.releaseGroup}\n"||""]}{stream.size::>0["📦 {stream.size::bytes}\n"||""]}{stream.languages::join(" ")::exists["🌎 {stream.languages::join(\" \")}\n"||""]}{stream.indexer::exists["🔎 {stream.indexer}\n"||""]}{stream.health::exists["🧪 {stream.health}"||""]}`;
+      const effectiveDescriptionPattern = buildPatternFromTokenList(NZB_NAMING_PATTERN, 'long', effectiveDefaultDescriptionPattern);
+      const formattedTitle = formatStreamTitle(effectiveDescriptionPattern, namingContext, effectiveDefaultDescriptionPattern);
 
-      const defaultNamePattern = '{addon.name} {stream.health::exists["{stream.health} "||""]}{stream.instant::istrue["⚡ "||""]}{stream.quality::exists["{stream.quality}"||""]}';
-      const effectiveNamePattern = buildPatternFromTokenList(NZB_DISPLAY_NAME_PATTERN, 'short', defaultNamePattern);
-      const formattedName = formatStreamTitle(effectiveNamePattern, namingContext, defaultNamePattern);
+      const defaultNamePattern = '{addon.name} {stream.health::exists["{stream.health} "||""]}{stream.instant::istrue["⚡ "||""]}{stream.resolution::exists["{stream.resolution}"||""]}';
+      const effectiveDefaultNamePattern = '{addon.name} {stream.health::exists["{stream.health} "||""]}{stream.instant::istrue["⚡ "||""]}{stream.resolution::exists["{stream.resolution}"||""]}';
+      const effectiveNamePattern = buildPatternFromTokenList(NZB_DISPLAY_NAME_PATTERN, 'short', effectiveDefaultNamePattern);
+      const formattedName = formatStreamTitle(effectiveNamePattern, namingContext, effectiveDefaultNamePattern);
 
       // Build behavior hints based on streaming mode
       let behaviorHints;

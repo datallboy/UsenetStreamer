@@ -216,8 +216,216 @@ function compareQualityThenSize(a, b) {
   return bSize - aSize;
 }
 
-function sortAnnotatedResults(results, sortMode, preferredLanguages) {
+function normalizePreferredList(values) {
+  if (!values) return [];
+  const list = Array.isArray(values)
+    ? values
+    : typeof values === 'string'
+      ? values.split(',')
+      : [];
+  const normalized = [];
+  const seen = new Set();
+  list.forEach((entry) => {
+    const token = entry === undefined || entry === null ? '' : String(entry).trim().toLowerCase();
+    if (!token) return;
+    if (seen.has(token)) return;
+    seen.add(token);
+    normalized.push(token);
+  });
+  return normalized;
+}
+
+function normalizeSortChain(values) {
+  const raw = normalizePreferredList(values);
+  const aliasMap = {
+    language: 'language',
+    languages: 'language',
+    preferredlanguage: 'language',
+    resolution: 'resolution',
+    resolutions: 'resolution',
+    preferredresolution: 'resolution',
+    quality: 'quality',
+    qualities: 'quality',
+    encode: 'encode',
+    encodes: 'encode',
+    codec: 'encode',
+    releasegroup: 'release_group',
+    releasegroups: 'release_group',
+    group: 'release_group',
+    visualtag: 'visual_tag',
+    visualtags: 'visual_tag',
+    videotag: 'visual_tag',
+    audiotag: 'audio_tag',
+    audiotags: 'audio_tag',
+    keyword: 'keyword',
+    keywords: 'keyword',
+    size: 'size',
+  };
+  const normalized = [];
+  const seen = new Set();
+  raw.forEach((token) => {
+    const compact = token.replace(/[^a-z0-9]/g, '');
+    const mapped = aliasMap[compact];
+    if (!mapped || seen.has(mapped)) return;
+    seen.add(mapped);
+    normalized.push(mapped);
+  });
+  return normalized;
+}
+
+function indexInPreferredByContains(value, preferred) {
+  if (!value || !preferred || preferred.length === 0) return Number.POSITIVE_INFINITY;
+  const working = String(value).toLowerCase();
+  for (let i = 0; i < preferred.length; i += 1) {
+    if (working.includes(preferred[i])) return i;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function getBestIndexFromList(values, preferred) {
+  if (!Array.isArray(values) || values.length === 0 || !preferred || preferred.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let best = Number.POSITIVE_INFINITY;
+  values.forEach((value) => {
+    const idx = indexInPreferredByContains(value, preferred);
+    if (idx < best) best = idx;
+  });
+  return best;
+}
+
+function isResolutionLikeToken(token) {
+  const value = String(token || '').trim().toLowerCase();
+  if (!value) return false;
+  return [
+    '8k', '4k', '4320p', '2160p', '1440p', '1080p', '720p', '576p', '540p', '480p', '360p', '240p', 'uhd', 'fhd', 'hd', 'sd'
+  ].includes(value);
+}
+
+function compareByCustomChain(a, b, options = {}) {
+  const sortChain = normalizeSortChain(options.sortOrder);
+  if (sortChain.length === 0) {
+    return compareQualityThenSize(a, b);
+  }
+
+  const preferredLanguages = normalizePreferredList(options.preferredLanguages);
+  const preferredQualities = normalizePreferredList(options.preferredQualities);
+  const preferredEncodes = normalizePreferredList(options.preferredEncodes);
+  const preferredReleaseGroups = normalizePreferredList(options.preferredReleaseGroups);
+  const preferredVisualTags = normalizePreferredList(options.preferredVisualTags);
+  const preferredAudioTags = normalizePreferredList(options.preferredAudioTags);
+  const preferredKeywords = normalizePreferredList(options.preferredKeywords);
+
+  const compareIndexes = (idxA, idxB) => {
+    if (idxA === idxB) return 0;
+    if (idxA === Number.POSITIVE_INFINITY) return 1;
+    if (idxB === Number.POSITIVE_INFINITY) return -1;
+    return idxA - idxB;
+  };
+
+  for (const criterion of sortChain) {
+    if (criterion === 'size') {
+      const aSize = Number.isFinite(a?.size) ? a.size : 0;
+      const bSize = Number.isFinite(b?.size) ? b.size : 0;
+      if (aSize !== bSize) return bSize - aSize;
+      continue;
+    }
+
+    if (criterion === 'language') {
+      const aIdx = getBestIndexFromList(gatherResultLanguages(a).map((lang) => String(lang).toLowerCase()), preferredLanguages);
+      const bIdx = getBestIndexFromList(gatherResultLanguages(b).map((lang) => String(lang).toLowerCase()), preferredLanguages);
+      const cmp = compareIndexes(aIdx, bIdx);
+      if (cmp !== 0) return cmp;
+      continue;
+    }
+
+    if (criterion === 'resolution') {
+      const aRank = Number.isFinite(a?.qualityRank) ? a.qualityRank : 0;
+      const bRank = Number.isFinite(b?.qualityRank) ? b.qualityRank : 0;
+      if (aRank !== bRank) return bRank - aRank;
+      continue;
+    }
+
+    if (criterion === 'quality') {
+      const aValue = a?.qualityLabel || a?.source || '';
+      const bValue = b?.qualityLabel || b?.source || '';
+      const qualityTokens = preferredQualities.filter((token) => !isResolutionLikeToken(token));
+      const resolutionLikeTokens = preferredQualities.filter((token) => isResolutionLikeToken(token));
+      const aQualityIdx = indexInPreferredByContains(aValue, qualityTokens);
+      const bQualityIdx = indexInPreferredByContains(bValue, qualityTokens);
+      const aResolutionFallbackIdx = indexInPreferredByContains(a?.resolution, resolutionLikeTokens);
+      const bResolutionFallbackIdx = indexInPreferredByContains(b?.resolution, resolutionLikeTokens);
+      const aIdx = Math.min(aQualityIdx, aResolutionFallbackIdx);
+      const bIdx = Math.min(bQualityIdx, bResolutionFallbackIdx);
+      const cmp = compareIndexes(aIdx, bIdx);
+      if (cmp !== 0) return cmp;
+      continue;
+    }
+
+    if (criterion === 'encode') {
+      const aIdx = indexInPreferredByContains(a?.codec, preferredEncodes);
+      const bIdx = indexInPreferredByContains(b?.codec, preferredEncodes);
+      const cmp = compareIndexes(aIdx, bIdx);
+      if (cmp !== 0) return cmp;
+      continue;
+    }
+
+    if (criterion === 'release_group') {
+      const aIdx = indexInPreferredByContains(a?.group, preferredReleaseGroups);
+      const bIdx = indexInPreferredByContains(b?.group, preferredReleaseGroups);
+      const cmp = compareIndexes(aIdx, bIdx);
+      if (cmp !== 0) return cmp;
+      continue;
+    }
+
+    if (criterion === 'visual_tag') {
+      const aTags = [
+        ...(Array.isArray(a?.visualTags) ? a.visualTags : []),
+        ...(Array.isArray(a?.hdrList) ? a.hdrList : []),
+      ];
+      const bTags = [
+        ...(Array.isArray(b?.visualTags) ? b.visualTags : []),
+        ...(Array.isArray(b?.hdrList) ? b.hdrList : []),
+      ];
+      const aIdx = getBestIndexFromList(aTags, preferredVisualTags);
+      const bIdx = getBestIndexFromList(bTags, preferredVisualTags);
+      const cmp = compareIndexes(aIdx, bIdx);
+      if (cmp !== 0) return cmp;
+      continue;
+    }
+
+    if (criterion === 'audio_tag') {
+      const aTags = Array.isArray(a?.audioList) ? a.audioList : [];
+      const bTags = Array.isArray(b?.audioList) ? b.audioList : [];
+      const aIdx = getBestIndexFromList(aTags, preferredAudioTags);
+      const bIdx = getBestIndexFromList(bTags, preferredAudioTags);
+      const cmp = compareIndexes(aIdx, bIdx);
+      if (cmp !== 0) return cmp;
+      continue;
+    }
+
+    if (criterion === 'keyword') {
+      const aIdx = indexInPreferredByContains(a?.title, preferredKeywords);
+      const bIdx = indexInPreferredByContains(b?.title, preferredKeywords);
+      const cmp = compareIndexes(aIdx, bIdx);
+      if (cmp !== 0) return cmp;
+      continue;
+    }
+  }
+
+  return compareQualityThenSize(a, b);
+}
+
+function sortAnnotatedResults(results, sortMode, preferredLanguages, sortOptions = {}) {
   if (!Array.isArray(results) || results.length === 0) return results;
+
+  if (sortMode === 'custom_priority') {
+    results.sort((a, b) => compareByCustomChain(a, b, {
+      ...sortOptions,
+      preferredLanguages,
+    }));
+    return results;
+  }
 
   const normalizedPreferences = normalizePreferredLanguageList(preferredLanguages);
   if (sortMode === 'language_quality_size' && normalizedPreferences.length > 0) {
@@ -244,6 +452,13 @@ function prepareSortedResults(results, options = {}) {
     maxSizeBytes,
     sortMode,
     preferredLanguages,
+    sortOrder,
+    preferredQualities,
+    preferredEncodes,
+    preferredReleaseGroups,
+    preferredVisualTags,
+    preferredAudioTags,
+    preferredKeywords,
     resolutionLimitPerQuality,
     allowedResolutions,
     releaseExclusions,
@@ -252,7 +467,15 @@ function prepareSortedResults(results, options = {}) {
   working = filterByAllowedResolutions(working, allowedResolutions);
   working = filterByReleaseExclusions(working, releaseExclusions);
   working = applyMaxSizeFilter(working, maxSizeBytes);
-  working = sortAnnotatedResults(working, sortMode, preferredLanguages);
+  working = sortAnnotatedResults(working, sortMode, preferredLanguages, {
+    sortOrder,
+    preferredQualities,
+    preferredEncodes,
+    preferredReleaseGroups,
+    preferredVisualTags,
+    preferredAudioTags,
+    preferredKeywords,
+  });
   working = applyResolutionLimits(working, resolutionLimitPerQuality);
   return working;
 }

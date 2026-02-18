@@ -1,7 +1,7 @@
 const path = require('path');
 const { LANGUAGE_FILTERS, LANGUAGE_SYNONYMS } = require('../services/metadata/releaseParser');
 
-const SORT_MODE_OPTIONS = new Set(['quality_then_size', 'language_quality_size']);
+const SORT_MODE_OPTIONS = new Set(['quality_then_size', 'language_quality_size', 'custom_priority']);
 
 const LANGUAGE_PREFERENCE_ALIASES = {
   en: 'English', 'en-us': 'English', 'en-gb': 'English', 'en-au': 'English',
