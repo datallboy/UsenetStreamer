@@ -181,32 +181,30 @@ function deriveTriageStatus(decision) {
   const warnings = Array.isArray(decision?.warnings) ? decision.warnings : [];
   const archiveFindings = Array.isArray(decision?.archiveFindings) ? decision.archiveFindings : [];
 
-  const hasSevenZipUntested = archiveFindings.some((finding) => {
+  const hasSevenZipFinding = archiveFindings.some((finding) => {
     const label = String(finding?.status || '').toLowerCase();
-    return label === 'sevenzip-untested';
-  }) || warnings.some((warning) => String(warning || '').toLowerCase().includes('sevenzip-untested'));
+    return label.startsWith('sevenzip');
+  }) || warnings.some((warning) => String(warning || '').toLowerCase().startsWith('sevenzip'));
 
   let status = 'blocked';
   if (decision?.decision === 'accept' && blockers.length === 0) {
-    if (hasSevenZipUntested) {
+    if (hasSevenZipFinding) {
       status = 'unverified_7z';
     } else {
       const positiveFinding = archiveFindings.some((finding) => {
         const label = String(finding?.status || '').toLowerCase();
-        return label === 'rar-stored' || label === 'sevenzip-stored' || label === 'segment-ok';
+        return label === 'rar-stored' || label === 'segment-ok';
       });
       status = positiveFinding ? 'verified' : 'unverified';
     }
   }
 
-  if (status === 'unverified') {
-    const sevenZipFlag = archiveFindings.some((finding) => {
-      const label = String(finding?.status || '').toLowerCase();
-      return label.startsWith('sevenzip');
-    }) || warnings.some((warning) => String(warning || '').toLowerCase().startsWith('sevenzip'));
-    if (sevenZipFlag) {
-      status = 'unverified_7z';
-    }
+  if (status === 'verified' && hasSevenZipFinding) {
+    status = 'unverified_7z';
+  }
+
+  if (status === 'unverified' && hasSevenZipFinding) {
+    status = 'unverified_7z';
   }
 
   return status;
@@ -247,7 +245,7 @@ function deriveArchiveCheckStatus(decision, archiveFindings) {
     'rar-insufficient-data',
     'rar-header-not-found',
   ]);
-  const passedArchiveCheck = archiveStatuses.some((status) => status === 'rar-stored' || status === 'sevenzip-stored');
+  const passedArchiveCheck = archiveStatuses.some((status) => status === 'rar-stored' || status === 'sevenzip-signature-ok');
   const failedArchiveCheck = (decision?.blockers || []).some((blocker) => archiveFailureTokens.has(blocker))
     || archiveStatuses.some((status) => archiveFailureTokens.has(status));
 

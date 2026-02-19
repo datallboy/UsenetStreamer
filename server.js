@@ -3141,7 +3141,7 @@ async function streamHandler(req, res) {
         'rar-insufficient-data',
         'rar-header-not-found',
       ]);
-      const passedArchiveCheck = archiveStatuses.some((status) => status === 'rar-stored' || status === 'sevenzip-stored');
+      const passedArchiveCheck = archiveStatuses.some((status) => status === 'rar-stored' || status === 'sevenzip-signature-ok');
       const failedArchiveCheck = (triageInfo?.blockers || []).some((blocker) => archiveFailureTokens.has(blocker))
         || archiveStatuses.some((status) => archiveFailureTokens.has(status));
       let archiveCheckStatus = 'not-run';

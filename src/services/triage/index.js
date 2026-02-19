@@ -443,7 +443,7 @@ async function analyzeSingleNzb(raw, ctx) {
       });
       if (nntpResult.segmentId) {
         checkedSegments.add(nntpResult.segmentId);
-        if (nntpResult.status === 'rar-stored' || nntpResult.status === 'sevenzip-stored') {
+        if (nntpResult.status === 'rar-stored' || nntpResult.status === 'sevenzip-signature-ok') {
           archiveFindings.push({
             source: 'nntp-stat',
             filename: archiveWithSegments.filename,
@@ -828,19 +828,6 @@ async function inspectArchiveViaNntp(file, ctx) {
       return { status: 'stat-error', details: { segmentId, message: err.message }, segmentId };
     }
 
-    if (isSevenZip) {
-      // console.log('[NZB TRIAGE] Skipping 7z archive inspection (STAT passed, body skipped)', {
-      //   filename: file.filename,
-      //   subject: file.subject,
-      //   segmentId,
-      // });
-      return {
-        status: 'sevenzip-untested',
-        details: { reason: '7z-skip-body', filename: effectiveFilename },
-        segmentId,
-      };
-    }
-
     let bodyStart = null;
     if (currentMetrics) {
       currentMetrics.bodyCalls += 1;
@@ -887,8 +874,9 @@ function handleArchiveStatus(status, blockers, warnings) {
   switch (status) {
     case 'rar-stored':
       return true;
-    case 'sevenzip-stored':
-      return true;
+    case 'sevenzip-signature-ok':
+      warnings.add('sevenzip-signature-ok');
+      break;
     case 'rar-compressed':
     case 'rar-encrypted':
     case 'rar-solid':
@@ -1278,19 +1266,21 @@ function inspectZip(buffer) {
   return { status: 'rar-header-not-found' };
 }
 
+// 7z metadata header lives at the END of the archive, so with only the first
+// ~256KB from segment 0 we can never reach it.  We simply confirm the 7z
+// signature is valid.  Downstream status mapping caps 7z at unverified_7z.
 function inspectSevenZip(buffer) {
-  try {
-    const analyzer = new SevenZipAnalyzer(buffer);
-    const outcome = analyzer.evaluate();
-    return outcome.copyOnly
-      ? { status: 'sevenzip-stored' }
-      : { status: 'sevenzip-unsupported', details: outcome.reason };
-  } catch (error) {
-    if (error?.code === 'SEVENZIP_INSUFFICIENT_DATA') {
-      return { status: 'sevenzip-insufficient-data', details: error.message };
-    }
-    return { status: 'sevenzip-unsupported', details: error?.message || 'Unknown 7z error' };
+  // Full 7z signature: 37 7A BC AF 27 1C
+  if (buffer.length < 6
+    || buffer[0] !== 0x37
+    || buffer[1] !== 0x7A
+    || buffer[2] !== 0xBC
+    || buffer[3] !== 0xAF
+    || buffer[4] !== 0x27
+    || buffer[5] !== 0x1C) {
+    return { status: 'sevenzip-insufficient-data', details: 'invalid or missing 7z signature' };
   }
+  return { status: 'sevenzip-signature-ok' };
 }
 
 function buildDecision(decision, blockers, warnings, meta) {
@@ -1301,372 +1291,6 @@ function buildDecision(decision, blockers, warnings, meta) {
     ...meta,
   };
 }
-
-class SevenZipAnalyzer {
-  constructor(buffer) {
-    this.buffer = buffer;
-  }
-
-  evaluate() {
-    if (!SevenZipAnalyzer.hasSignature(this.buffer)) {
-      throw Object.assign(new Error('Missing 7z signature'), { code: 'SEVENZIP_INSUFFICIENT_DATA' });
-    }
-    if (this.buffer.length < 32) {
-      throw Object.assign(new Error('Incomplete 7z start header'), { code: 'SEVENZIP_INSUFFICIENT_DATA' });
-    }
-
-    const nextHeaderOffset = Number(this.buffer.readBigUInt64LE(12));
-    const nextHeaderSize = Number(this.buffer.readBigUInt64LE(20));
-    const headerStart = 32 + nextHeaderOffset;
-    const headerEnd = headerStart + nextHeaderSize;
-    if (headerStart < 32 || headerEnd > this.buffer.length) {
-      throw Object.assign(new Error('7z next header outside buffered range'), { code: 'SEVENZIP_INSUFFICIENT_DATA' });
-    }
-
-    const headerSlice = this.buffer.slice(headerStart, headerEnd);
-    const parser = new SevenZipHeaderParser(headerSlice);
-    return parser.parse();
-  }
-
-  static hasSignature(buffer) {
-    return buffer.length >= 6
-      && buffer[0] === 0x37
-      && buffer[1] === 0x7A
-      && buffer[2] === 0xBC
-      && buffer[3] === 0xAF
-      && buffer[4] === 0x27
-      && buffer[5] === 0x1C;
-  }
-}
-
-class SevenZipHeaderParser {
-  constructor(buffer) {
-    this.buffer = buffer;
-    this.pos = 0;
-  }
-
-  parse() {
-    const rootId = this.readByte();
-    if (rootId === SEVEN_ZIP_IDS.kEncodedHeader) {
-      throw new Error('Encoded 7z headers are not supported');
-    }
-    if (rootId !== SEVEN_ZIP_IDS.kHeader) {
-      throw new Error('Unexpected 7z header identifier');
-    }
-
-    let copyOnly = false;
-    while (true) {
-      const sectionId = this.readByte();
-      if (sectionId === SEVEN_ZIP_IDS.kEnd) break;
-      switch (sectionId) {
-        case SEVEN_ZIP_IDS.kArchiveProperties:
-          this.skipPropertyBlock();
-          break;
-        case SEVEN_ZIP_IDS.kAdditionalStreamsInfo:
-          this.skipStreamsInfo();
-          break;
-        case SEVEN_ZIP_IDS.kMainStreamsInfo:
-          copyOnly = this.parseStreamsInfo();
-          break;
-        case SEVEN_ZIP_IDS.kFilesInfo:
-          this.skipFilesInfo();
-          break;
-        default:
-          throw new Error(`Unsupported 7z header section: ${sectionId}`);
-      }
-    }
-
-    return {
-      copyOnly,
-      reason: copyOnly ? undefined : 'compressed-coder-detected',
-    };
-  }
-
-  parseStreamsInfo() {
-    let copyOnly = false;
-    let sawUnpackInfo = false;
-    while (true) {
-      const id = this.readByte();
-      if (id === SEVEN_ZIP_IDS.kEnd) break;
-      if (id === SEVEN_ZIP_IDS.kPackInfo) {
-        this.skipPackInfo();
-      } else if (id === SEVEN_ZIP_IDS.kUnpackInfo) {
-        const folderResult = this.parseUnpackInfo();
-        copyOnly = folderResult;
-        sawUnpackInfo = true;
-      } else if (id === SEVEN_ZIP_IDS.kSubStreamsInfo) {
-        this.skipSubStreamsInfo();
-      } else {
-        throw new Error(`Unsupported StreamsInfo block id ${id}`);
-      }
-    }
-    return sawUnpackInfo ? copyOnly : false;
-  }
-
-  parseUnpackInfo() {
-    if (this.readByte() !== SEVEN_ZIP_IDS.kFolder) {
-      throw new Error('Expected Folder block in UnpackInfo');
-    }
-    const numFolders = this.readNumber();
-    if (this.readByte() !== 0) {
-      throw new Error('External Folder references are not supported');
-    }
-
-    const folders = [];
-    let copyOnly = true;
-    for (let i = 0; i < numFolders; i += 1) {
-      const folder = this.parseFolder();
-      folders.push(folder);
-      copyOnly = copyOnly && folder.copyOnly;
-    }
-
-    if (this.readByte() !== SEVEN_ZIP_IDS.kCodersUnpackSize) {
-      throw new Error('Expected CodersUnpackSize block');
-    }
-    folders.forEach((folder) => {
-      for (let i = 0; i < folder.totalOutStreams; i += 1) {
-        this.readNumber();
-      }
-    });
-
-    const nextId = this.readByte();
-    if (nextId === SEVEN_ZIP_IDS.kCRC) {
-      const definedCount = this.skipBoolVector(folders.length);
-      for (let i = 0; i < definedCount; i += 1) {
-        this.readUInt32();
-      }
-      this.expectByte(SEVEN_ZIP_IDS.kEnd);
-    } else if (nextId !== SEVEN_ZIP_IDS.kEnd) {
-      throw new Error('Unexpected identifier after CodersUnpackSize');
-    }
-
-    return copyOnly;
-  }
-
-  parseFolder() {
-    const numCoders = this.readNumber();
-    if (numCoders <= 0 || numCoders > 32) {
-      throw new Error('Invalid coder count in folder');
-    }
-    let totalInStreams = 0;
-    let totalOutStreams = 0;
-    let copyOnly = true;
-
-    for (let i = 0; i < numCoders; i += 1) {
-      const coder = this.parseCoder();
-      totalInStreams += coder.inStreams;
-      totalOutStreams += coder.outStreams;
-      copyOnly = copyOnly && coder.isCopyMethod;
-    }
-
-    const numBindPairs = totalOutStreams > 0 ? totalOutStreams - 1 : 0;
-    for (let i = 0; i < numBindPairs; i += 1) {
-      this.readNumber();
-      this.readNumber();
-    }
-
-    const numPackedStreams = totalInStreams - numBindPairs;
-    if (numPackedStreams < 0) {
-      throw new Error('Invalid packed stream count');
-    }
-    if (numPackedStreams > 1) {
-      for (let i = 0; i < numPackedStreams; i += 1) {
-        this.readNumber();
-      }
-    }
-
-    return { copyOnly, totalOutStreams };
-  }
-
-  parseCoder() {
-    const mainByte = this.readByte();
-    const idSize = (mainByte & 0x0F) + 1;
-    const isSimple = (mainByte & 0x10) === 0;
-    const hasAttributes = (mainByte & 0x20) !== 0;
-    const hasAltInStreams = (mainByte & 0x40) !== 0;
-    const hasAltOutStreams = (mainByte & 0x80) !== 0;
-
-    const methodId = this.readBytes(idSize);
-    let inStreams = isSimple ? 1 : this.readNumber();
-    let outStreams = isSimple ? 1 : this.readNumber();
-    if (hasAltInStreams) inStreams = this.readNumber();
-    if (hasAltOutStreams) outStreams = this.readNumber();
-    if (hasAttributes) {
-      const attrSize = this.readNumber();
-      this.skip(attrSize);
-    }
-
-    const isCopyMethod = methodId.length === 1 && methodId[0] === 0x00;
-    return { isCopyMethod, inStreams, outStreams };
-  }
-
-  skipPropertyBlock() {
-    while (true) {
-      const id = this.readByte();
-      if (id === SEVEN_ZIP_IDS.kEnd) break;
-      const size = this.readNumber();
-      this.skip(size);
-    }
-  }
-
-  skipStreamsInfo() {
-    this.parseStreamsInfo();
-  }
-
-  skipPackInfo() {
-    this.readNumber();
-    const numPackStreams = this.readNumber();
-    let id = this.readByte();
-    if (id === SEVEN_ZIP_IDS.kSize) {
-      for (let i = 0; i < numPackStreams; i += 1) {
-        this.readNumber();
-      }
-      id = this.readByte();
-    }
-    if (id === SEVEN_ZIP_IDS.kCRC) {
-      const defined = this.skipBoolVector(numPackStreams);
-      for (let i = 0; i < defined; i += 1) {
-        this.readUInt32();
-      }
-      id = this.readByte();
-    }
-    if (id !== SEVEN_ZIP_IDS.kEnd) {
-      throw new Error('Malformed PackInfo block');
-    }
-  }
-
-  skipSubStreamsInfo() {
-    while (true) {
-      const id = this.readByte();
-      if (id === SEVEN_ZIP_IDS.kEnd) break;
-      const size = this.readNumber();
-      this.skip(size);
-    }
-  }
-
-  skipFilesInfo() {
-    const numFiles = this.readNumber();
-    if (numFiles < 0) {
-      throw new Error('Invalid file count in FilesInfo');
-    }
-    while (true) {
-      const propertyType = this.readByte();
-      if (propertyType === SEVEN_ZIP_IDS.kEnd) break;
-      const size = this.readNumber();
-      this.skip(size);
-    }
-  }
-
-  skipBoolVector(count) {
-    const allDefined = this.readByte();
-    if (allDefined !== 0) {
-      return count;
-    }
-    let mask = 0;
-    let value = 0;
-    let defined = 0;
-    for (let i = 0; i < count; i += 1) {
-      if (mask === 0) {
-        value = this.readByte();
-        mask = 0x01;
-      }
-      if (value & mask) defined += 1;
-      mask <<= 1;
-      if (mask > 0x80) mask = 0;
-    }
-    return defined;
-  }
-
-  expectByte(expected) {
-    const actual = this.readByte();
-    if (actual !== expected) {
-      throw new Error(`Expected token ${expected} but received ${actual}`);
-    }
-  }
-
-  readUInt32() {
-    if (this.pos + 4 > this.buffer.length) {
-      throw Object.assign(new Error('Unexpected end of buffer'), { code: 'SEVENZIP_INSUFFICIENT_DATA' });
-    }
-    const value = this.buffer.readUInt32LE(this.pos);
-    this.pos += 4;
-    return value;
-  }
-
-  readBytes(length) {
-    if (this.pos + length > this.buffer.length) {
-      throw Object.assign(new Error('Unexpected end of buffer'), { code: 'SEVENZIP_INSUFFICIENT_DATA' });
-    }
-    const slice = this.buffer.slice(this.pos, this.pos + length);
-    this.pos += length;
-    return slice;
-  }
-
-  readByte() {
-    if (this.pos >= this.buffer.length) {
-      throw Object.assign(new Error('Unexpected end of buffer'), { code: 'SEVENZIP_INSUFFICIENT_DATA' });
-    }
-    const value = this.buffer[this.pos];
-    this.pos += 1;
-    return value;
-  }
-
-  readNumber() {
-    const firstByte = this.readByte();
-    let mask = 0x80;
-    let additional = 0;
-    while (additional < 8 && (firstByte & mask) === 0) {
-      mask >>= 1;
-      additional += 1;
-    }
-    if (mask === 0) {
-      let value = 0n;
-      for (let i = 0; i < 8; i += 1) {
-        value = (value << 8n) | BigInt(this.readByte());
-      }
-      return Number(value);
-    }
-    let value = BigInt(firstByte & (mask - 1));
-    for (let i = 0; i < additional; i += 1) {
-      value = (value << 8n) | BigInt(this.readByte());
-    }
-    return Number(value);
-  }
-
-  skip(length) {
-    if (this.pos + length > this.buffer.length) {
-      throw Object.assign(new Error('Unexpected end of buffer during skip'), { code: 'SEVENZIP_INSUFFICIENT_DATA' });
-    }
-    this.pos += length;
-  }
-}
-
-const SEVEN_ZIP_IDS = {
-  kEnd: 0x00,
-  kHeader: 0x01,
-  kArchiveProperties: 0x02,
-  kAdditionalStreamsInfo: 0x03,
-  kMainStreamsInfo: 0x04,
-  kFilesInfo: 0x05,
-  kPackInfo: 0x06,
-  kUnpackInfo: 0x07,
-  kSubStreamsInfo: 0x08,
-  kSize: 0x09,
-  kCRC: 0x0A,
-  kFolder: 0x0B,
-  kCodersUnpackSize: 0x0C,
-  kNumUnpackStream: 0x0D,
-  kEmptyStream: 0x0E,
-  kEmptyFile: 0x0F,
-  kAnti: 0x10,
-  kName: 0x11,
-  kCTime: 0x12,
-  kATime: 0x13,
-  kMTime: 0x14,
-  kWinAttributes: 0x15,
-  kComment: 0x16,
-  kEncodedHeader: 0x17,
-};
 
 function statSegment(pool, segmentId) {
   if (currentMetrics) currentMetrics.statCalls += 1;
