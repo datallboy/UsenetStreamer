@@ -186,23 +186,10 @@ function deriveTriageStatus(decision) {
     return label === 'sevenzip-untested';
   }) || warnings.some((warning) => String(warning || '').toLowerCase().includes('sevenzip-untested'));
 
-  const hasAssumedStoredWithoutParsedEntries = archiveFindings.some((finding) => {
-    const label = String(finding?.status || '').toLowerCase();
-    if (label !== 'rar-stored') return false;
-    const note = String(finding?.details?.note || '').toLowerCase();
-    if (note !== 'rar5-header-assumed-stored') return false;
-    const hasName = Boolean(finding?.details?.name);
-    const hasSamples = Array.isArray(finding?.details?.sampleEntries)
-      && finding.details.sampleEntries.some((entry) => Boolean(entry));
-    return !hasName && !hasSamples;
-  });
-
   let status = 'blocked';
   if (decision?.decision === 'accept' && blockers.length === 0) {
     if (hasSevenZipUntested) {
       status = 'unverified_7z';
-    } else if (hasAssumedStoredWithoutParsedEntries) {
-      status = 'blocked';
     } else {
       const positiveFinding = archiveFindings.some((finding) => {
         const label = String(finding?.status || '').toLowerCase();

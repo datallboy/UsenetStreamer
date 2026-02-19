@@ -897,6 +897,7 @@ function handleArchiveStatus(status, blockers, warnings) {
     case 'sevenzip-nested-archive':
     case 'sevenzip-unsupported':
     case 'rar-iso-image':
+    case 'rar-insufficient-data':
       blockers.add(status);
       break;
     case 'stat-missing':
@@ -905,7 +906,6 @@ function handleArchiveStatus(status, blockers, warnings) {
       break;
     case 'archive-not-found':
     case 'archive-no-segments':
-    case 'rar-insufficient-data':
     case 'rar-header-not-found':
     case 'sevenzip-insufficient-data':
     case 'io-error':
