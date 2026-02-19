@@ -433,7 +433,7 @@ async function analyzeSingleNzb(raw, ctx) {
   } else {
     const archiveWithSegments = selectArchiveForInspection(archiveCandidates);
     if (archiveWithSegments) {
-      const nntpResult = await inspectArchiveViaNntp(archiveWithSegments, ctx);
+      const nntpResult = await inspectArchiveViaNntp(archiveWithSegments, ctx, files);
       archiveFindings.push({
         source: 'nntp',
         filename: archiveWithSegments.filename,
@@ -744,6 +744,9 @@ function buildArchiveScore(archive) {
   if (/\.rar$/i.test(filename)) score += 10;
   if (/\.r\d{2}$/i.test(filename)) score += 9;
   if (/\.part\d+\.rar$/i.test(filename)) score += 8;
+  if (/\.7z$/i.test(filename)) score += 10;
+  if (/\.7z\.001$/i.test(filename)) score += 10;
+  if (/\.7z\.\d{3}$/i.test(filename)) score += 9;
   if (/proof|sample|nfo/i.test(filename)) score -= 5;
   if (isVideoFileName(filename)) score += 4;
   return score;
@@ -799,7 +802,7 @@ async function analyzeArchiveFile(filePath) {
   }
 }
 
-async function inspectArchiveViaNntp(file, ctx) {
+async function inspectArchiveViaNntp(file, ctx, allFiles) {
   const segments = file.segments ?? [];
   if (segments.length === 0) return { status: 'archive-no-segments' };
   const segmentId = segments[0]?.id;
@@ -828,11 +831,15 @@ async function inspectArchiveViaNntp(file, ctx) {
       return { status: 'stat-error', details: { segmentId, message: err.message }, segmentId };
     }
 
-    // 7z: metadata header lives at the END of the archive so body parsing is
-    // useless (and split parts like .7z.002 don't even have the signature).
-    // STAT passed above, so just confirm it's a 7z candidate.
+    // 7z: attempt deep inspection (fetch header + footer, parse coders in pure JS)
     if (isSevenZip) {
-      return { status: 'sevenzip-signature-ok', details: { filename: effectiveFilename }, segmentId };
+      try {
+        const deepResult = await inspectSevenZipDeep(file, ctx, allFiles || [], client);
+        return { ...deepResult, segmentId };
+      } catch (err) {
+        // Deep inspection failed; fall back to signature-ok so 7z still caps at unverified_7z
+        return { status: 'sevenzip-signature-ok', details: { filename: effectiveFilename, deepError: err?.message }, segmentId };
+      }
     }
 
     let bodyStart = null;
@@ -1273,11 +1280,8 @@ function inspectZip(buffer) {
   return { status: 'rar-header-not-found' };
 }
 
-// 7z metadata header lives at the END of the archive, so with only the first
-// ~256KB from segment 0 we can never reach it.  We simply confirm the 7z
-// signature is valid.  Downstream status mapping caps 7z at unverified_7z.
+// Simple 7z signature check (used as fallback by inspectArchiveBuffer)
 function inspectSevenZip(buffer) {
-  // Full 7z signature: 37 7A BC AF 27 1C
   if (buffer.length < 6
     || buffer[0] !== 0x37
     || buffer[1] !== 0x7A
@@ -1288,6 +1292,352 @@ function inspectSevenZip(buffer) {
     return { status: 'sevenzip-insufficient-data', details: 'invalid or missing 7z signature' };
   }
   return { status: 'sevenzip-signature-ok' };
+}
+
+// ---------------------------------------------------------------------------
+// 7z deep inspection: fetch start header (first segment of first part) and
+// footer (last segment of last part), then parse the metadata header in pure
+// JS to determine if all coders are copy-only (stored).
+// ---------------------------------------------------------------------------
+
+const SEVENZIP_SIGNATURE = Buffer.from([0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]);
+
+function findSevenZipParts(files, targetFile) {
+  const targetName = targetFile.filename || guessFilenameFromSubject(targetFile.subject);
+  if (!targetName) return [targetFile];
+  const match = targetName.match(/^(.+)\.7z(?:\.\d{3})?$/i);
+  if (!match) return [targetFile];
+  const baseName = match[1].toLowerCase();
+  const parts = files.filter((f) => {
+    const name = f.filename || guessFilenameFromSubject(f.subject);
+    if (!name) return false;
+    const m = name.match(/^(.+)\.7z(?:\.\d{3})?$/i);
+    return m && m[1].toLowerCase() === baseName;
+  });
+  parts.sort((a, b) => {
+    const nameA = (a.filename || guessFilenameFromSubject(a.subject) || '').toLowerCase();
+    const nameB = (b.filename || guessFilenameFromSubject(b.subject) || '').toLowerCase();
+    const mA = nameA.match(/\.7z\.(\d{3})$/);
+    const mB = nameB.match(/\.7z\.(\d{3})$/);
+    const pA = mA ? parseInt(mA[1], 10) : 0; // .7z alone = part 0
+    const pB = mB ? parseInt(mB[1], 10) : 0;
+    return pA - pB;
+  });
+  return parts.length > 0 ? parts : [targetFile];
+}
+
+async function inspectSevenZipDeep(file, ctx, allFiles, client) {
+  const parts = findSevenZipParts(allFiles, file);
+  const firstPart = parts[0];
+  const lastPart = parts[parts.length - 1];
+
+  // --- Fetch first segment of first part (contains 7z start header) ---
+  const firstSegments = firstPart.segments ?? [];
+  if (firstSegments.length === 0) {
+    return { status: 'sevenzip-signature-ok', details: { reason: 'no-first-segments' } };
+  }
+  const firstSegId = firstSegments[0]?.id;
+  if (!firstSegId) {
+    return { status: 'sevenzip-signature-ok', details: { reason: 'no-first-segment-id' } };
+  }
+
+  const headerBody = await fetchSegmentBodyWithClient(client, firstSegId);
+  const headerBuf = decodeYencBuffer(headerBody, 2 * 1024 * 1024);
+
+  // Verify signature
+  if (headerBuf.length < 32 || !headerBuf.subarray(0, 6).equals(SEVENZIP_SIGNATURE)) {
+    return { status: 'sevenzip-insufficient-data', details: { reason: 'invalid-signature' } };
+  }
+
+  const nextHeaderOffset = Number(headerBuf.readBigUInt64LE(12));
+  const nextHeaderSize = Number(headerBuf.readBigUInt64LE(20));
+
+  if (nextHeaderSize <= 0 || nextHeaderSize > 10 * 1024 * 1024) {
+    // Metadata > 10MB is unreasonable; bail out
+    return { status: 'sevenzip-signature-ok', details: { reason: 'metadata-too-large', nextHeaderSize } };
+  }
+
+  // --- Fetch last segment of last part (contains 7z metadata footer) ---
+  const lastSegments = lastPart.segments ?? [];
+  if (lastSegments.length === 0) {
+    return { status: 'sevenzip-signature-ok', details: { reason: 'no-last-segments' } };
+  }
+  const lastSegId = lastSegments[lastSegments.length - 1]?.id;
+  if (!lastSegId) {
+    return { status: 'sevenzip-signature-ok', details: { reason: 'no-last-segment-id' } };
+  }
+
+  const footerBody = await fetchSegmentBodyWithClient(client, lastSegId);
+  const footerBuf = decodeYencBuffer(footerBody, 2 * 1024 * 1024);
+
+  // The metadata header lives at the very end of the archive.
+  // footerBuf is the decoded last segment, so the metadata should be
+  // in the last nextHeaderSize bytes of footerBuf.
+  if (footerBuf.length < nextHeaderSize) {
+    return { status: 'sevenzip-signature-ok', details: { reason: 'footer-too-small', footerLen: footerBuf.length, needed: nextHeaderSize } };
+  }
+
+  // Try parsing from the expected position first, then scan backwards
+  // in case the archive doesn't fill the segment to the exact end.
+  const attempts = [];
+  // Attempt 1: metadata at very end
+  attempts.push(footerBuf.subarray(footerBuf.length - nextHeaderSize));
+  // Attempt 2: scan for kHeader (0x01) or kEncodedHeader (0x17) within last region
+  for (let offset = footerBuf.length - nextHeaderSize; offset >= Math.max(0, footerBuf.length - nextHeaderSize - 256); offset--) {
+    const byte = footerBuf[offset];
+    if ((byte === 0x01 || byte === 0x17) && offset !== footerBuf.length - nextHeaderSize) {
+      attempts.push(footerBuf.subarray(offset));
+      break;
+    }
+  }
+
+  let lastError = null;
+  for (const metadataSlice of attempts) {
+    const parseResult = parseSevenZipMetadata(metadataSlice);
+    if (parseResult.error) {
+      lastError = { error: parseResult.error, sliceLen: metadataSlice.length, firstBytes: metadataSlice.subarray(0, Math.min(8, metadataSlice.length)).toString('hex') };
+      continue;
+    }
+    if (parseResult.compressed) {
+      return { status: 'sevenzip-unsupported', details: { reason: 'compressed-coder-detected', nextHeaderSize, footerLen: footerBuf.length, debug: parseResult.debug } };
+    }
+    return { status: 'sevenzip-signature-ok', details: { reason: 'copy-only-confirmed', nextHeaderSize, footerLen: footerBuf.length, debug: parseResult.debug } };
+  }
+
+  // All attempts failed
+  return { status: 'sevenzip-signature-ok', details: {
+    reason: 'metadata-parse-error',
+    message: lastError?.error || '7z-eof',
+    nextHeaderSize,
+    footerLen: footerBuf.length,
+    sliceLen: lastError?.sliceLen,
+    firstBytes: lastError?.firstBytes,
+  } };
+}
+
+// ---------------------------------------------------------------------------
+// Pure-JS 7z metadata header parser — reads just enough to determine if all
+// coder methods are copy (0x00) or compressed.
+// ---------------------------------------------------------------------------
+
+function parseSevenZipMetadata(buffer) {
+  const reader = { buf: buffer, pos: 0 };
+  try {
+    const rootId = sz_readByte(reader);
+    // 0x17 = kEncodedHeader — the metadata header itself is LZMA-compressed.
+    // This is very common; it does NOT mean the archive data is compressed.
+    // We can't decompress the header in pure JS, so treat as unknown/unverified.
+    if (rootId === 0x17) return { compressed: false, encodedHeader: true, debug: { rootId: '0x17-encoded' } };
+    // 0x01 = kHeader (uncompressed metadata — we can parse coders)
+    if (rootId !== 0x01) return { error: 'unexpected-root-id' };
+
+    while (true) {
+      const sectionId = sz_readByte(reader);
+      if (sectionId === 0x00) break; // kEnd
+      if (sectionId === 0x04) { // kMainStreamsInfo
+        const result = sz_parseStreamsInfo(reader);
+        if (result.compressed) return { compressed: true, debug: result.debug };
+        return { compressed: false, debug: result.debug };
+      } else if (sectionId === 0x02) { // kArchiveProperties
+        sz_skipPropertyBlock(reader);
+      } else if (sectionId === 0x03) { // kAdditionalStreamsInfo
+        // Can't reliably skip; if we haven't seen MainStreamsInfo yet, bail
+        return { error: 'additional-streams-before-main' };
+      } else if (sectionId === 0x05) { // kFilesInfo
+        sz_skipFilesInfo(reader);
+      } else {
+        return { error: `unsupported-section-${sectionId}` };
+      }
+    }
+    return { compressed: false };
+  } catch (err) {
+    return { error: err?.message || 'parse-exception' };
+  }
+}
+
+function sz_parseStreamsInfo(reader) {
+  let copyOnly = false;
+  let sawUnpack = false;
+  let debug = null;
+  while (true) {
+    const id = sz_readByte(reader);
+    if (id === 0x00) break; // kEnd
+    if (id === 0x06) { // kPackInfo
+      sz_skipPackInfo(reader);
+    } else if (id === 0x07) { // kUnpackInfo
+      const result = sz_parseUnpackInfo(reader);
+      copyOnly = result.copyOnly;
+      debug = result.debug;
+      sawUnpack = true;
+      return { copyOnly, compressed: !copyOnly, debug };
+    } else if (id === 0x08) { // kSubStreamsInfo
+      return { copyOnly: false, compressed: false, debug: { note: 'substreams-before-unpack' } };
+    } else {
+      throw new Error(`unsupported-streams-block-${id}`);
+    }
+  }
+  return { copyOnly: sawUnpack ? copyOnly : false, compressed: sawUnpack ? !copyOnly : false, debug };
+}
+
+function sz_parseUnpackInfo(reader) {
+  if (sz_readByte(reader) !== 0x0B) throw new Error('expected-kFolder'); // kFolder
+  const numFolders = sz_readNumber(reader);
+  if (sz_readByte(reader) !== 0) throw new Error('external-folders-unsupported');
+
+  let allCopy = true;
+  const folders = [];
+  const coderDebug = [];
+  for (let i = 0; i < numFolders; i++) {
+    const folder = sz_parseFolder(reader);
+    folders.push(folder);
+    if (!folder.copyOnly) allCopy = false;
+    coderDebug.push(folder.coderInfo);
+  }
+
+  if (sz_readByte(reader) !== 0x0C) throw new Error('expected-kCodersUnpackSize');
+  for (const folder of folders) {
+    for (let i = 0; i < folder.totalOutStreams; i++) sz_readNumber(reader);
+  }
+
+  const nextId = sz_readByte(reader);
+  if (nextId === 0x0A) { // kCRC
+    sz_skipBoolVector(reader, numFolders, true);
+    if (sz_readByte(reader) !== 0x00) throw new Error('expected-kEnd-after-crc');
+  } else if (nextId !== 0x00) {
+    throw new Error('unexpected-after-unpack');
+  }
+
+  return { copyOnly: allCopy, debug: { numFolders, coderDebug } };
+}
+
+function sz_parseFolder(reader) {
+  const numCoders = sz_readNumber(reader);
+  if (numCoders <= 0 || numCoders > 32) throw new Error('bad-coder-count');
+  let totalIn = 0;
+  let totalOut = 0;
+  let copyOnly = true;
+  const coderInfo = [];
+  for (let i = 0; i < numCoders; i++) {
+    const mainByte = sz_readByte(reader);
+    const idSize = mainByte & 0x0F; // CodecIdSize (0 = Copy method)
+    const isSimple = (mainByte & 0x10) === 0;
+    const hasAttributes = (mainByte & 0x20) !== 0;
+    const methodId = idSize > 0 ? sz_readBytes(reader, idSize) : Buffer.alloc(0);
+    let inStreams = isSimple ? 1 : sz_readNumber(reader);
+    let outStreams = isSimple ? 1 : sz_readNumber(reader);
+    if (hasAttributes) {
+      const attrSize = sz_readNumber(reader);
+      sz_skip(reader, attrSize);
+    }
+    totalIn += inStreams;
+    totalOut += outStreams;
+    // Copy/Store method: codec ID is a single byte 0x00
+    const isCopy = (idSize === 1 && methodId[0] === 0x00) || idSize === 0;
+    if (!isCopy) copyOnly = false;
+    coderInfo.push({ mainByte: '0x' + mainByte.toString(16), idSize, methodHex: Buffer.from(methodId).toString('hex'), isCopy });
+  }
+  const numBindPairs = totalOut > 0 ? totalOut - 1 : 0;
+  for (let i = 0; i < numBindPairs; i++) { sz_readNumber(reader); sz_readNumber(reader); }
+  const numPacked = totalIn - numBindPairs;
+  if (numPacked > 1) { for (let i = 0; i < numPacked; i++) sz_readNumber(reader); }
+  return { copyOnly, totalOutStreams: totalOut, coderInfo };
+}
+
+function sz_skipPackInfo(reader) {
+  sz_readNumber(reader); // packPos
+  const numPackStreams = sz_readNumber(reader);
+  while (true) {
+    const id = sz_readByte(reader);
+    if (id === 0x00) break; // kEnd
+    if (id === 0x09) { // kSize
+      for (let i = 0; i < numPackStreams; i++) sz_readNumber(reader);
+    } else if (id === 0x0A) { // kCRC
+      sz_skipBoolVector(reader, numPackStreams, true);
+    } else {
+      // Unknown sub-block in PackInfo; skip by reading size + data
+      const size = sz_readNumber(reader);
+      sz_skip(reader, size);
+    }
+  }
+}
+
+function sz_skipPropertyBlock(reader) {
+  while (true) {
+    const id = sz_readByte(reader);
+    if (id === 0x00) break;
+    const size = sz_readNumber(reader);
+    sz_skip(reader, size);
+  }
+}
+
+function sz_skipFilesInfo(reader) {
+  const numFiles = sz_readNumber(reader);
+  if (numFiles < 0) throw new Error('bad-file-count');
+  while (true) {
+    const propType = sz_readByte(reader);
+    if (propType === 0x00) break;
+    const size = sz_readNumber(reader);
+    sz_skip(reader, size);
+  }
+}
+
+function sz_skipBoolVector(reader, count, readCrcs) {
+  const allDefined = sz_readByte(reader);
+  let definedCount = count;
+  if (allDefined === 0) {
+    definedCount = 0;
+    let mask = 0;
+    let value = 0;
+    for (let i = 0; i < count; i++) {
+      if (mask === 0) { value = sz_readByte(reader); mask = 0x80; }
+      if (value & mask) definedCount++;
+      mask >>= 1;
+    }
+  }
+  if (readCrcs) {
+    for (let i = 0; i < definedCount; i++) sz_skip(reader, 4); // uint32 CRC
+  }
+  return definedCount;
+}
+
+// --- 7z reader primitives ---
+function sz_readByte(reader) {
+  if (reader.pos >= reader.buf.length) throw new Error('7z-eof');
+  return reader.buf[reader.pos++];
+}
+function sz_readBytes(reader, n) {
+  if (reader.pos + n > reader.buf.length) throw new Error('7z-eof');
+  const slice = reader.buf.subarray(reader.pos, reader.pos + n);
+  reader.pos += n;
+  return slice;
+}
+function sz_skip(reader, n) {
+  if (reader.pos + n > reader.buf.length) throw new Error('7z-eof');
+  reader.pos += n;
+}
+// 7z variable-length integer: count leading ONE bits in first byte to
+// determine how many extra bytes follow (matching the 7zip C reference).
+function sz_readNumber(reader) {
+  const b = sz_readByte(reader);
+  // 0xxxxxxx: single byte, value 0-127
+  if ((b & 0x80) === 0) return b;
+
+  // At least one extra byte
+  let value = BigInt(sz_readByte(reader));
+
+  for (let i = 1; i < 8; i++) {
+    const mask = 0x80 >>> i;
+    if ((b & mask) === 0) {
+      // Remaining value bits from first byte go to the highest position
+      const high = BigInt(b & (mask - 1));
+      value |= (high << BigInt(i * 8));
+      return Number(value);
+    }
+    // Read next byte in little-endian order
+    value |= (BigInt(sz_readByte(reader)) << BigInt(i * 8));
+  }
+  // 0xFF: 8 extra bytes already read
+  return Number(value);
 }
 
 function buildDecision(decision, blockers, warnings, meta) {

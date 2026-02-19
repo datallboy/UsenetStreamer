@@ -101,12 +101,22 @@ async function main() {
         triagePriority,
         blockers: decision.blockers || [],
         warnings: decision.warnings || [],
-        archiveFindings,
+        archiveFindings: 'see below',
         archiveSampleEntries,
         archiveCheckStatus,
         missingArticlesStatus,
         timedOut: false,
       });
+      // Print archiveFindings with full details (avoids [Object] truncation)
+      if (archiveFindings.length > 0) {
+        console.log('  archiveFindings:');
+        archiveFindings.forEach((f, i) => {
+          console.log(`    [${i}] ${f.source} | ${f.filename || '?'} | status: ${f.status}`);
+          if (f.details) {
+            console.log(`        details: ${JSON.stringify(f.details)}`);
+          }
+        });
+      }
     });
 
     console.log('\nSummary:');
