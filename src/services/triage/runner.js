@@ -166,8 +166,6 @@ async function triageAndRank(nzbResults, options = {}) {
   const startTs = Date.now();
   const timeBudgetMs = options.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
   const preferredSizeBytes = Number.isFinite(options.preferredSizeBytes) ? options.preferredSizeBytes : null;
-  const preferredIndexerSet = normalizeIndexerSet(options.preferredIndexerIds);
-  const serializedIndexerSet = normalizeIndexerSet(options.serializedIndexerIds);
   const allowedIndexerSet = normalizeIndexerSet(options.allowedIndexerIds);
   const maxCandidates = Math.max(1, options.maxCandidates ?? DEFAULT_MAX_CANDIDATES);
   const logger = options.logger;
@@ -178,7 +176,7 @@ async function triageAndRank(nzbResults, options = {}) {
   const constrainedCandidates = allowedIndexerSet.size > 0
     ? builtCandidates.filter((candidate) => candidateMatchesIndexerSet(candidate, allowedIndexerSet))
     : builtCandidates;
-  const candidates = rankCandidates(constrainedCandidates, preferredSizeBytes, preferredIndexerSet);
+  const candidates = rankCandidates(constrainedCandidates, preferredSizeBytes);
   const uniqueCandidates = [];
   const seenTitles = new Set();
   candidates.forEach((candidate) => {
@@ -234,30 +232,6 @@ async function triageAndRank(nzbResults, options = {}) {
   );
   const downloadTimeoutMs = options.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
   const triageConfig = { ...triageOptions, reuseNntpPool: true };
-  const serializedChains = new Map();
-
-  const runWithSerializedIndexer = async (indexerKey, task) => {
-    if (!indexerKey || !serializedIndexerSet.has(indexerKey)) {
-      return task();
-    }
-    const previous = serializedChains.get(indexerKey) || Promise.resolve();
-    let releaseCurrent;
-    const currentGate = new Promise((resolve) => {
-      releaseCurrent = resolve;
-    });
-    const chained = previous.then(() => currentGate);
-    serializedChains.set(indexerKey, chained);
-    await previous;
-    try {
-      return await task();
-    } finally {
-      releaseCurrent();
-      if (serializedChains.get(indexerKey) === chained) {
-        serializedChains.delete(indexerKey);
-      }
-    }
-  };
-
   let cursor = 0;
   let timedOut = false;
   let evaluatedCount = 0;
@@ -283,9 +257,6 @@ async function triageAndRank(nzbResults, options = {}) {
       const { downloadUrl } = candidate;
 
       if (decisionMap.has(downloadUrl)) continue;
-
-      const indexerKey = normalizeIndexerToken(candidate.indexerId)
-        || normalizeIndexerToken(candidate.indexerName);
 
       if (Date.now() - startTs >= timeBudgetMs) {
         timedOut = true;

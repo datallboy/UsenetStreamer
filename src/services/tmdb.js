@@ -11,10 +11,12 @@ const TMDB_RETRY_DELAY_MS = 500;
 const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'ENOTFOUND', 'EAI_AGAIN']);
 
 // Configuration (reloaded from process.env)
-let TMDB_ENABLED = false;
-let TMDB_API_KEY = '';
-let TMDB_SEARCH_LANGUAGES = []; // Array of additional locale codes like ['hi-IN', 'ta-IN']
-let TMDB_SEARCH_MODE = 'english_only'; // 'english_only' | 'english_and_regional' | 'regional_only'
+const state = {
+  TMDB_ENABLED: false,
+  TMDB_API_KEY: '',
+  TMDB_SEARCH_LANGUAGES: [], // Array of additional locale codes like ['hi-IN', 'ta-IN']
+  TMDB_SEARCH_MODE: 'english_only', // 'english_only' | 'english_and_regional' | 'regional_only'
+};
 
 // In-memory cache for TMDb responses
 const tmdbCache = new Map();
@@ -73,37 +75,37 @@ const LANGUAGE_TO_TMDB_LOCALE = {
 
 function reloadConfig() {
   const enabledRaw = (process.env.TMDB_ENABLED ?? 'false').toString().trim().toLowerCase();
-  TMDB_ENABLED = !['false', '0', 'off', 'no'].includes(enabledRaw);
-  TMDB_API_KEY = (process.env.TMDB_API_KEY || '').trim();
+  state.TMDB_ENABLED = !['false', '0', 'off', 'no'].includes(enabledRaw);
+  state.TMDB_API_KEY = (process.env.TMDB_API_KEY || '').trim();
   const languagesStr = (process.env.TMDB_SEARCH_LANGUAGES || '').trim();
-  TMDB_SEARCH_LANGUAGES = languagesStr ? languagesStr.split(',').map(l => l.trim()).filter(Boolean) : [];
+  state.TMDB_SEARCH_LANGUAGES = languagesStr ? languagesStr.split(',').map(l => l.trim()).filter(Boolean) : [];
   const modeRaw = (process.env.TMDB_SEARCH_MODE || 'english_only').toString().trim().toLowerCase();
   if (['english_only', 'english_and_regional', 'regional_only'].includes(modeRaw)) {
-    TMDB_SEARCH_MODE = modeRaw;
+    state.TMDB_SEARCH_MODE = modeRaw;
   } else {
-    TMDB_SEARCH_MODE = 'english_only';
+    state.TMDB_SEARCH_MODE = 'english_only';
   }
   
   console.log('[TMDB] Config reloaded', { 
-    enabled: TMDB_ENABLED,
-    hasApiKey: Boolean(TMDB_API_KEY), 
-    additionalLanguages: TMDB_SEARCH_LANGUAGES,
-    searchMode: TMDB_SEARCH_MODE,
+    enabled: state.TMDB_ENABLED,
+    hasApiKey: Boolean(state.TMDB_API_KEY), 
+    additionalLanguages: state.TMDB_SEARCH_LANGUAGES,
+    searchMode: state.TMDB_SEARCH_MODE,
   });
 }
 
 reloadConfig();
 
 function isConfigured() {
-  return Boolean(TMDB_ENABLED && TMDB_API_KEY);
+  return Boolean(state.TMDB_ENABLED && state.TMDB_API_KEY);
 }
 
 function getConfig() {
   return {
-    enabled: TMDB_ENABLED,
-    apiKey: TMDB_API_KEY,
-    additionalLanguages: TMDB_SEARCH_LANGUAGES,
-    searchMode: TMDB_SEARCH_MODE,
+    enabled: state.TMDB_ENABLED,
+    apiKey: state.TMDB_API_KEY,
+    additionalLanguages: state.TMDB_SEARCH_LANGUAGES,
+    searchMode: state.TMDB_SEARCH_MODE,
   };
 }
 
@@ -163,7 +165,7 @@ function setInCache(key, data) {
  * Make authenticated TMDb API request with linear retry for transient errors
  */
 async function tmdbRequest(endpoint, params = {}) {
-  if (!TMDB_API_KEY) {
+  if (!state.TMDB_API_KEY) {
     throw new Error('TMDb API key not configured');
   }
 
@@ -175,7 +177,7 @@ async function tmdbRequest(endpoint, params = {}) {
       const response = await axios.get(url, {
         params,
         headers: {
-          'Authorization': `Bearer ${TMDB_API_KEY}`,
+          'Authorization': `Bearer ${state.TMDB_API_KEY}`,
           'Accept': 'application/json',
         },
         timeout: 8000,
@@ -431,18 +433,18 @@ async function getMetadataAndTitles({ imdbId, tmdbId, type }) {
     }
   };
 
-  if (TMDB_SEARCH_MODE === 'english_only') {
+  if (state.TMDB_SEARCH_MODE === 'english_only') {
     pushLocale('en-US');
   } else {
     pushLocale(originalLocale);
-    if (TMDB_SEARCH_MODE === 'english_and_regional') {
+    if (state.TMDB_SEARCH_MODE === 'english_and_regional') {
       pushLocale('en-US');
     }
   }
   
   // Add additional selected languages
-  if (TMDB_SEARCH_LANGUAGES.length > 0) {
-    TMDB_SEARCH_LANGUAGES.forEach((locale) => pushLocale(locale));
+  if (state.TMDB_SEARCH_LANGUAGES.length > 0) {
+    state.TMDB_SEARCH_LANGUAGES.forEach((locale) => pushLocale(locale));
   }
   
   console.log(`[TMDB] Fetching ${languagesToFetch.length} language(s) in parallel:`, languagesToFetch);
@@ -479,7 +481,7 @@ async function getMetadataAndTitles({ imdbId, tmdbId, type }) {
   });
 
   // Step 5: Include original title only when not in english-only mode
-  if (TMDB_SEARCH_MODE !== 'english_only' && originalTitle && !seenTitles.has(originalTitle.toLowerCase())) {
+  if (state.TMDB_SEARCH_MODE !== 'english_only' && originalTitle && !seenTitles.has(originalTitle.toLowerCase())) {
     seenTitles.add(originalTitle.toLowerCase());
     titles.push({
       language: originalLanguage,

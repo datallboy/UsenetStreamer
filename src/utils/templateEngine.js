@@ -159,7 +159,8 @@
 
             // Recursive resolution
             while (result.match(/\{[^{}]+\}/) && iteration < maxIterations) {
-                result = result.replace(/\{([^{}]+)\}/g, (match, content) => {
+                result = result.replace(/\{([^{}]+)\}/g, (...args) => {
+                    const content = args[1];
                     return this.processBlock(content);
                 });
                 iteration++;

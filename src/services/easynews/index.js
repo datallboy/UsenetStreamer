@@ -25,13 +25,15 @@ const httpClient = axios.create({
   validateStatus: (status) => status >= 200 && status < 500,
 });
 
-let EASYNEWS_ENABLED = false;
-let EASYNEWS_USERNAME = '';
-let EASYNEWS_PASSWORD = '';
-let EASYNEWS_MIN_SIZE_BYTES = DEFAULT_MIN_SIZE_MB * 1024 * 1024;
-let EASYNEWS_DOWNLOAD_BASE = '';
-let EASYNEWS_SHARED_SECRET = '';
-let EASYNEWS_SAFE_TEXT_MODE = false;
+const state = {
+  EASYNEWS_ENABLED: false,
+  EASYNEWS_USERNAME: '',
+  EASYNEWS_PASSWORD: '',
+  EASYNEWS_MIN_SIZE_BYTES: DEFAULT_MIN_SIZE_MB * 1024 * 1024,
+  EASYNEWS_DOWNLOAD_BASE: '',
+  EASYNEWS_SHARED_SECRET: '',
+  EASYNEWS_SAFE_TEXT_MODE: false,
+};
 
 function resolveDownloadBase(rawBase) {
   const trimmed = stripTrailingSlashes(rawBase || '');
@@ -41,22 +43,22 @@ function resolveDownloadBase(rawBase) {
 }
 
 function reloadConfig({ addonBaseUrl, sharedSecret } = {}) {
-  EASYNEWS_ENABLED = toBoolean(process.env.EASYNEWS_ENABLED, false);
-  EASYNEWS_USERNAME = (process.env.EASYNEWS_USERNAME || '').trim();
-  EASYNEWS_PASSWORD = (process.env.EASYNEWS_PASSWORD || '').trim();
+  state.EASYNEWS_ENABLED = toBoolean(process.env.EASYNEWS_ENABLED, false);
+  state.EASYNEWS_USERNAME = (process.env.EASYNEWS_USERNAME || '').trim();
+  state.EASYNEWS_PASSWORD = (process.env.EASYNEWS_PASSWORD || '').trim();
   const minSizeMb = Number(process.env.EASYNEWS_MIN_SIZE_MB);
   if (Number.isFinite(minSizeMb) && minSizeMb >= 20) {
-    EASYNEWS_MIN_SIZE_BYTES = minSizeMb * 1024 * 1024;
+    state.EASYNEWS_MIN_SIZE_BYTES = minSizeMb * 1024 * 1024;
   } else {
-    EASYNEWS_MIN_SIZE_BYTES = DEFAULT_MIN_SIZE_MB * 1024 * 1024;
+    state.EASYNEWS_MIN_SIZE_BYTES = DEFAULT_MIN_SIZE_MB * 1024 * 1024;
   }
-  EASYNEWS_DOWNLOAD_BASE = resolveDownloadBase(addonBaseUrl);
-  EASYNEWS_SHARED_SECRET = sharedSecret || '';
-  EASYNEWS_SAFE_TEXT_MODE = toBoolean(process.env.EASYNEWS_TEXT_MODE_ONLY, false);
+  state.EASYNEWS_DOWNLOAD_BASE = resolveDownloadBase(addonBaseUrl);
+  state.EASYNEWS_SHARED_SECRET = sharedSecret || '';
+  state.EASYNEWS_SAFE_TEXT_MODE = toBoolean(process.env.EASYNEWS_TEXT_MODE_ONLY, false);
 }
 
 function isEasynewsEnabled() {
-  return EASYNEWS_ENABLED && Boolean(EASYNEWS_USERNAME && EASYNEWS_PASSWORD);
+  return state.EASYNEWS_ENABLED && Boolean(state.EASYNEWS_USERNAME && state.EASYNEWS_PASSWORD);
 }
 
 function requiresCinemetaMetadata(isSpecialRequest) {
@@ -65,8 +67,8 @@ function requiresCinemetaMetadata(isSpecialRequest) {
 }
 
 function buildAuthConfig(override = null) {
-  const username = (override?.username || EASYNEWS_USERNAME || '').trim();
-  const password = (override?.password || EASYNEWS_PASSWORD || '').trim();
+  const username = (override?.username || state.EASYNEWS_USERNAME || '').trim();
+  const password = (override?.password || state.EASYNEWS_PASSWORD || '').trim();
   if (!username || !password) {
     throw new Error('Easynews credentials are not configured');
   }
@@ -307,8 +309,8 @@ function buildNzbPayload(items, name) {
 }
 
 function buildDownloadUrl(token) {
-  const secretSegment = EASYNEWS_SHARED_SECRET ? `/${encodeURIComponent(EASYNEWS_SHARED_SECRET)}` : '';
-  return `${EASYNEWS_DOWNLOAD_BASE}${secretSegment}/easynews/nzb?payload=${encodeURIComponent(token)}`;
+  const secretSegment = state.EASYNEWS_SHARED_SECRET ? `/${encodeURIComponent(state.EASYNEWS_SHARED_SECRET)}` : '';
+  return `${state.EASYNEWS_DOWNLOAD_BASE}${secretSegment}/easynews/nzb?payload=${encodeURIComponent(token)}`;
 }
 
 function filterAndMap(jsonData, options) {
@@ -578,11 +580,11 @@ async function searchEasynews(options = {}) {
   if (!query) {
     return [];
   }
-  const strict = strictMode && !specialTextOnly && !EASYNEWS_SAFE_TEXT_MODE;
+  const strict = strictMode && !specialTextOnly && !state.EASYNEWS_SAFE_TEXT_MODE;
   const strictPhrase = strict ? sanitizePhrase(query) : '';
   const queryTokens = strict ? tokenize(query) : [];
   const queryMeta = strict ? buildQueryMeta({ rawQuery: query, year, season, episode }) : null;
-  const minBytes = EASYNEWS_MIN_SIZE_BYTES;
+  const minBytes = state.EASYNEWS_MIN_SIZE_BYTES;
   const data = await fetchSearchResults(query);
   const mapped = filterAndMap(data, {
     minBytes,
