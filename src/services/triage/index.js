@@ -29,13 +29,13 @@ const DEFAULT_OPTIONS = {
   archiveDirs: [],
   nntpConfig: null,
   healthCheckTimeoutMs: 35000,
-  maxDecodedBytes: 256 * 1024,
+  maxDecodedBytes: 64 * 1024,
   nntpMaxConnections: 60,
   reuseNntpPool: true,
   nntpKeepAliveMs: 120000 ,
   maxParallelNzbs: Number.POSITIVE_INFINITY,
   statSampleCount: 1,
-  archiveSampleCount: 2,
+  archiveSampleCount: 1,
 };
 
 let sharedNntpPoolRecord = null;
