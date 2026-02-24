@@ -3411,20 +3411,20 @@ async function streamHandler(req, res) {
             archiveSampleEntries.push(finding.details.name);
           }
         });
-        console.log('[NZB TRIAGE] Stream candidate status', {
-          title: result.title,
-          downloadUrl: result.downloadUrl,
-          status: triageStatus,
-          triageApplied,
-          triagePriority,
-          blockers: triageInfo?.blockers || [],
-          warnings: triageInfo?.warnings || [],
-          archiveFindings: triageInfo?.archiveFindings || [],
-          archiveSampleEntries,
-          archiveCheckStatus,
-          missingArticlesStatus,
-          timedOut: Boolean(triageOutcome?.timedOut)
-        });
+        // console.log('[NZB TRIAGE] Stream candidate status', {
+        //   title: result.title,
+        //   downloadUrl: result.downloadUrl,
+        //   status: triageStatus,
+        //   triageApplied,
+        //   triagePriority,
+        //   blockers: triageInfo?.blockers || [],
+        //   warnings: triageInfo?.warnings || [],
+        //   archiveFindings: triageInfo?.archiveFindings || [],
+        //   archiveSampleEntries,
+        //   archiveCheckStatus,
+        //   missingArticlesStatus,
+        //   timedOut: Boolean(triageOutcome?.timedOut)
+        // });
         triageLogCount += 1;
       } else if (!triageApplied) {
         // Skip logging for streams that were never part of the triage batch

@@ -35,7 +35,7 @@ const DEFAULT_OPTIONS = {
   nntpKeepAliveMs: 120000 ,
   maxParallelNzbs: Number.POSITIVE_INFINITY,
   statSampleCount: 1,
-  archiveSampleCount: 1,
+  archiveSampleCount: 2,
 };
 
 let sharedNntpPoolRecord = null;
@@ -656,6 +656,21 @@ function isPlayableVideoName(name) {
   return !/sample|proof/i.test(name);
 }
 
+// Detect actual non-video media content (audio, ebooks, etc.) — NOT companion files.
+// Used to prevent truncated-buffer false-passes on music/audiobook releases.
+const NON_VIDEO_MEDIA_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.wav', '.aac', '.ogg', '.wma', '.ape', '.opus', '.m4a', '.alac',
+  '.dsf', '.dff', '.wv',  // lossless audio
+  '.pdf', '.epub', '.mobi', '.azw3', '.cbr', '.cbz',  // ebooks/comics
+]);
+function isNonVideoMediaFile(name) {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  const dot = lower.lastIndexOf('.');
+  if (dot < 0) return false;
+  return NON_VIDEO_MEDIA_EXTENSIONS.has(lower.slice(dot));
+}
+
 function isSevenZipFilename(name) {
   if (!name) return false;
   const lower = name.trim().toLowerCase();
@@ -895,29 +910,31 @@ async function inspectArchiveViaNntp(file, ctx, allFiles, nzbPassword) {
   const effectiveFilename = file.filename || guessFilenameFromSubject(file.subject) || '';
   const isSevenZip = isSevenZipFilename(effectiveFilename);
   return runWithClient(ctx.nntpPool, async (client) => {
-    let statStart = null;
-    if (currentMetrics) {
-      currentMetrics.statCalls += 1;
-      statStart = Date.now();
-    }
-    try {
-      await statSegmentWithClient(client, segmentId);
-      if (currentMetrics && statStart !== null) {
-        currentMetrics.statSuccesses += 1;
-        currentMetrics.statDurationMs += Date.now() - statStart;
-      }
-    } catch (err) {
-      if (currentMetrics && statStart !== null) {
-        currentMetrics.statDurationMs += Date.now() - statStart;
-        if (err.code === 'STAT_MISSING' || err.code === 430) currentMetrics.statMissing += 1;
-        else currentMetrics.statErrors += 1;
-      }
-      if (err.code === 'STAT_MISSING' || err.code === 430) return { status: 'stat-missing', details: { segmentId }, segmentId };
-      return { status: 'stat-error', details: { segmentId, message: err.message }, segmentId };
-    }
-
-    // 7z: attempt deep inspection (fetch header + footer, parse coders in pure JS)
+    // For 7z archives, do a quick STAT pre-check before the heavier deep inspection.
+    // For RAR/ZIP, skip upfront STAT — the BODY fetch on the same segment will
+    // inherently verify existence, avoiding a redundant round-trip.
     if (isSevenZip) {
+      let statStart = null;
+      if (currentMetrics) {
+        currentMetrics.statCalls += 1;
+        statStart = Date.now();
+      }
+      try {
+        await statSegmentWithClient(client, segmentId);
+        if (currentMetrics && statStart !== null) {
+          currentMetrics.statSuccesses += 1;
+          currentMetrics.statDurationMs += Date.now() - statStart;
+        }
+      } catch (err) {
+        if (currentMetrics && statStart !== null) {
+          currentMetrics.statDurationMs += Date.now() - statStart;
+          if (err.code === 'STAT_MISSING' || err.code === 430) currentMetrics.statMissing += 1;
+          else currentMetrics.statErrors += 1;
+        }
+        if (err.code === 'STAT_MISSING' || err.code === 430) return { status: 'stat-missing', details: { segmentId }, segmentId };
+        return { status: 'stat-error', details: { segmentId, message: err.message }, segmentId };
+      }
+
       try {
         const deepResult = await inspectSevenZipDeep(file, ctx, allFiles || [], client, nzbPassword);
         return { ...deepResult, segmentId };
@@ -927,6 +944,7 @@ async function inspectArchiveViaNntp(file, ctx, allFiles, nzbPassword) {
       }
     }
 
+    // RAR/ZIP path: BODY fetch directly (no redundant STAT)
     let bodyStart = null;
     if (currentMetrics) {
       currentMetrics.bodyCalls += 1;
@@ -1041,6 +1059,7 @@ function inspectRar4(buffer, password) {
   let storedDetails = null;
   let nestedArchiveCount = 0;
   let playableEntryFound = false;
+  let bufferExhausted = false;
   const sampleEntries = [];
 
   while (offset + 7 <= buffer.length) {
@@ -1161,7 +1180,13 @@ function inspectRar4(buffer, password) {
       }
     }
 
+    // Temp debug
+    if (process.env.DEBUG_RAR4) console.log(`[RAR4] type=0x${headerType.toString(16)} flags=0x${headerFlags.toString(16)} hdrSize=${headerSize} addSize=${addSize} offset=${offset} next=${offset+headerSize+addSize} bufLen=${buffer.length}`);
+
     offset += headerSize + addSize;
+    if (offset > buffer.length) {
+      bufferExhausted = true;
+    }
   }
 
   if (storedDetails) {
@@ -1172,6 +1197,13 @@ function inspectRar4(buffer, password) {
       };
     }
     if (!playableEntryFound && sampleEntries.length > 0) {
+      // If we ran out of buffer before seeing all entries AND visible entries are
+      // only companion/metadata files (not actual media), the video file header may
+      // be beyond what we downloaded. Don't block — pass with a truncated flag.
+      // But if visible entries include non-video media (e.g. .mp3), still block.
+      if (bufferExhausted && !sampleEntries.some(isNonVideoMediaFile)) {
+        return { status: 'rar-stored', details: { ...storedDetails, sampleEntries, truncated: true } };
+      }
       return { status: 'rar-no-video', details: { ...storedDetails, sampleEntries } };
     }
     return { status: 'rar-stored', details: { ...storedDetails, sampleEntries } };
@@ -1180,11 +1212,12 @@ function inspectRar4(buffer, password) {
   return { status: 'rar-header-not-found' };
 }
 
-function inspectRar5(buffer, password) {
+function inspectRar5(buffer, password, headersOnly) {
   let offset = RAR5_SIGNATURE.length;
   let nestedArchiveCount = 0;
   let playableEntryFound = false;
   let storedDetails = null;
+  let bufferExhausted = false;
   const sampleEntries = [];
 
   while (offset < buffer.length) {
@@ -1235,7 +1268,7 @@ function inspectRar5(buffer, password) {
     // We already advanced 'pos' past CRC and Size(VINT) to read the Type.
     // Actually, 'headerSize' includes the Type, Flags, etc.
     // So the block ends at: (offset + 4 + sizeRes.bytes) + headerSize + dataSize
-    const nextBlockOffset = offset + 4 + sizeRes.bytes + headerSize + dataSize;
+    const nextBlockOffset = offset + 4 + sizeRes.bytes + headerSize + (headersOnly ? 0 : dataSize);
 
     // RAR5 Archive Encryption Header (type 4): all subsequent headers are AES-256 encrypted.
     // Parse the encryption params, derive key via PBKDF2-HMAC-SHA256, decrypt and re-parse.
@@ -1302,7 +1335,7 @@ function inspectRar5(buffer, password) {
         if (decryptedHeaders && decryptedHeaders.length > 0) {
           // Prepend the RAR5 signature so inspectRar5 can re-parse the decrypted headers
           const fakeBuffer = Buffer.concat([RAR5_SIGNATURE, decryptedHeaders]);
-          const result = inspectRar5(fakeBuffer, null);
+          const result = inspectRar5(fakeBuffer, null, true);
           if (result.status !== 'rar-header-not-found') return result;
         }
       } catch (_) {
@@ -1378,6 +1411,9 @@ function inspectRar5(buffer, password) {
     }
 
     offset = nextBlockOffset;
+    if (offset > buffer.length) {
+      bufferExhausted = true;
+    }
   }
 
   if (storedDetails) {
@@ -1388,6 +1424,9 @@ function inspectRar5(buffer, password) {
       };
     }
     if (!playableEntryFound && sampleEntries.length > 0) {
+      if (bufferExhausted && !sampleEntries.some(isNonVideoMediaFile)) {
+        return { status: 'rar-stored', details: { ...storedDetails, sampleEntries, truncated: true } };
+      }
       return { status: 'rar-no-video', details: { ...storedDetails, sampleEntries } };
     }
     return { status: 'rar-stored', details: { ...storedDetails, sampleEntries } };
@@ -1639,7 +1678,7 @@ async function inspectSevenZipDeep(file, ctx, allFiles, client, nzbPassword) {
         const method = parseResult.encodedInfo?.coderMethod || '';
         if (method.startsWith('06f107')) {
           // If we have a password from NZB metadata, try to decrypt the encoded header
-          if (nzbPassword && parseResult.encodedInfo.coders?.length >= 2) {
+          if (nzbPassword && parseResult.encodedInfo.coders?.length >= 1) {
             try {
               const decryptedHeader = await decryptEncodedHeader(parseResult.encodedInfo, footerBuf, nextHeaderSize, nzbPassword);
               if (decryptedHeader) {
@@ -2133,6 +2172,7 @@ function decryptRar5Headers(buffer, startOffset, aesKey) {
     const iv = buffer.subarray(pos, pos + 16);
     pos += 16;
 
+
     // Remaining encrypted data from this point
     const remaining = buffer.length - pos;
     if (remaining < 16) break;
@@ -2176,10 +2216,38 @@ function decryptRar5Headers(buffer, startOffset, aesKey) {
     // End of archive
     if (headerType === 5) break;
 
-    // Advance pos in original buffer past the encrypted data for this header.
-    // The encrypted data size is headerBlockSize rounded up to 16 bytes.
+    // Advance pos in original buffer past the encrypted header data.
+    // The encrypted header size is headerBlockSize rounded up to 16 bytes.
     const encBlockSize = headerBlockSize + ((16 - (headerBlockSize % 16)) % 16);
     pos += encBlockSize;
+
+    // If this header has a data area (file content), it follows as a separate
+    // encrypted block: [IV(16)] [encrypted data]. We need to skip over it.
+    // Parse the header's flags and data size to determine how much to skip.
+    let hdrPos = 4 + sizeRes.bytes; // past CRC + headerSize vint
+    hdrPos += typeRes.bytes; // past type
+    const hdrFlagsRes = readRar5Vint(decrypted, hdrPos);
+    if (hdrFlagsRes) {
+      const hdrFlags = hdrFlagsRes.value;
+      hdrPos += hdrFlagsRes.bytes;
+      const hdrHasExtra = (hdrFlags & 0x0001) !== 0;
+      const hdrHasData = (hdrFlags & 0x0002) !== 0;
+      if (hdrHasExtra) {
+        const r = readRar5Vint(decrypted, hdrPos);
+        if (r) hdrPos += r.bytes;
+      }
+      if (hdrHasData) {
+        const r = readRar5Vint(decrypted, hdrPos);
+        if (r && r.value > 0) {
+          // Skip file data area between encrypted headers.
+          // File data is NOT header-encrypted (it's raw or per-file encrypted).
+          // Just skip dataSize bytes (no IV prefix, no padding needed for raw data).
+          const dataSize = r.value;
+          if (process.env.DEBUG_RAR5_DECRYPT) console.log(`[RAR5-DECRYPT] skip data: dataSize=${dataSize} newPos=${pos+dataSize} bufLen=${buffer.length}`);
+          pos += dataSize;
+        }
+      }
+    }
   }
 
   if (chunks.length === 0) return null;
