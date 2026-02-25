@@ -6,6 +6,8 @@ const DEFAULT_TIME_BUDGET_MS = 40000;
 const DEFAULT_MAX_CANDIDATES = 25;
 const DEFAULT_DOWNLOAD_CONCURRENCY = 8;
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 10000;
+const LARGE_NZB_DOWNLOAD_TIMEOUT_MS = 15000;
+const LARGE_NZB_SIZE_THRESHOLD = 30 * 1024 * 1024 * 1024; // 30 GB
 const TIMEOUT_ERROR_CODE = 'TRIAGE_TIMEOUT';
 
 function normalizeTitle(title) {
@@ -230,7 +232,12 @@ async function triageAndRank(nzbResults, options = {}) {
     1,
     Math.min(options.downloadConcurrency ?? DEFAULT_DOWNLOAD_CONCURRENCY, selectedCandidates.length),
   );
-  const downloadTimeoutMs = options.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
+  const baseDownloadTimeoutMs = options.downloadTimeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS;
+  // If any candidate is >40 GB, use the larger timeout for all downloads
+  const hasLargeCandidate = selectedCandidates.some((c) => (c.size || 0) > LARGE_NZB_SIZE_THRESHOLD);
+  const downloadTimeoutMs = hasLargeCandidate
+    ? Math.max(baseDownloadTimeoutMs, LARGE_NZB_DOWNLOAD_TIMEOUT_MS)
+    : baseDownloadTimeoutMs;
   const triageConfig = { ...triageOptions, reuseNntpPool: true };
   let cursor = 0;
   let timedOut = false;

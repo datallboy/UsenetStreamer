@@ -113,7 +113,7 @@ function createSevenZipDeepInspector({
 
           const method = parseResult.encodedInfo?.coderMethod || '';
           if (method.startsWith('06f107')) {
-            if (nzbPassword && parseResult.encodedInfo.coders?.length >= 2) {
+            if (nzbPassword && parseResult.encodedInfo.coders?.length >= 1) {
               try {
                 const decryptedHeader = await encodedHeaderInspector.decryptEncodedHeader(parseResult.encodedInfo, footerBuf, nextHeaderSize, nzbPassword);
                 if (decryptedHeader) {

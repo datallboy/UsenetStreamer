@@ -3,6 +3,11 @@ function createArchiveUtils({ isVideoFileName }) {
   const VIDEO_FILE_EXTENSIONS = ['.mkv', '.mp4', '.mov', '.avi', '.ts', '.m4v', '.mpg', '.mpeg', '.wmv', '.flv', '.webm'];
   const ISO_FILE_EXTENSIONS = ['.iso'];
   const ARCHIVE_SAMPLE_ENTRY_LIMIT = 5;
+  const NON_VIDEO_MEDIA_EXTENSIONS = new Set([
+    '.mp3', '.flac', '.wav', '.aac', '.ogg', '.wma', '.ape', '.opus', '.m4a', '.alac',
+    '.dsf', '.dff', '.wv',
+    '.pdf', '.epub', '.mobi', '.azw3', '.cbr', '.cbz',
+  ]);
 
   function extractFiles(parsedNzb) {
     const filesNode = parsedNzb?.nzb?.file ?? [];
@@ -90,6 +95,14 @@ function createArchiveUtils({ isVideoFileName }) {
     if (!name) return false;
     if (!isVideoFileName(name)) return false;
     return !/sample|proof/i.test(name);
+  }
+
+  function isNonVideoMediaFile(name) {
+    if (!name) return false;
+    const lower = name.toLowerCase();
+    const dot = lower.lastIndexOf('.');
+    if (dot < 0) return false;
+    return NON_VIDEO_MEDIA_EXTENSIONS.has(lower.slice(dot));
   }
 
   function isSevenZipFilename(name) {
@@ -291,6 +304,7 @@ function createArchiveUtils({ isVideoFileName }) {
     isIsoFileName,
     isDiscStructurePath,
     isPlayableVideoName,
+    isNonVideoMediaFile,
     isSevenZipFilename,
     analyzeBufferFilenames,
     recordSampleEntry,

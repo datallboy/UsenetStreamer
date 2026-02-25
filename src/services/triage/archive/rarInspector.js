@@ -9,12 +9,18 @@ function createRarInspector({
   isVideoFileName,
   isArchiveEntryName,
   isDiscStructurePath,
+  isNonVideoMediaFile,
 }) {
+  const isNonVideoMedia = typeof isNonVideoMediaFile === 'function'
+    ? isNonVideoMediaFile
+    : () => false;
+
   function inspectRar4(buffer, password) {
     let offset = RAR4_SIGNATURE.length;
     let storedDetails = null;
     let nestedArchiveCount = 0;
     let playableEntryFound = false;
+    let bufferExhausted = false;
     const sampleEntries = [];
 
     while (offset + 7 <= buffer.length) {
@@ -116,6 +122,9 @@ function createRarInspector({
       }
 
       offset += headerSize + addSize;
+      if (offset > buffer.length) {
+        bufferExhausted = true;
+      }
     }
 
     if (storedDetails) {
@@ -126,6 +135,9 @@ function createRarInspector({
         };
       }
       if (!playableEntryFound && sampleEntries.length > 0) {
+        if (bufferExhausted && !sampleEntries.some(isNonVideoMedia)) {
+          return { status: 'rar-stored', details: { ...storedDetails, sampleEntries, truncated: true } };
+        }
         return { status: 'rar-no-video', details: { ...storedDetails, sampleEntries } };
       }
       return { status: 'rar-stored', details: { ...storedDetails, sampleEntries } };
@@ -134,11 +146,12 @@ function createRarInspector({
     return { status: 'rar-header-not-found' };
   }
 
-  function inspectRar5(buffer, password) {
+  function inspectRar5(buffer, password, headersOnly) {
     let offset = RAR5_SIGNATURE.length;
     let nestedArchiveCount = 0;
     let playableEntryFound = false;
     let storedDetails = null;
+    let bufferExhausted = false;
     const sampleEntries = [];
 
     while (offset < buffer.length) {
@@ -178,7 +191,7 @@ function createRarInspector({
         pos += dataRes.bytes;
       }
 
-      const nextBlockOffset = offset + 4 + sizeRes.bytes + headerSize + dataSize;
+      const nextBlockOffset = offset + 4 + sizeRes.bytes + headerSize + (headersOnly ? 0 : dataSize);
 
       if (headerType === 0x04) {
         const encVerRes = readRar5Vint(buffer, pos);
@@ -234,7 +247,7 @@ function createRarInspector({
           const decryptedHeaders = decryptRar5Headers(buffer, encOffset, aesKey);
           if (decryptedHeaders && decryptedHeaders.length > 0) {
             const fakeBuffer = Buffer.concat([RAR5_SIGNATURE, decryptedHeaders]);
-            const result = inspectRar5(fakeBuffer, null);
+            const result = inspectRar5(fakeBuffer, null, true);
             if (result.status !== 'rar-header-not-found') return result;
           }
         } catch (_) {}
@@ -307,6 +320,9 @@ function createRarInspector({
       }
 
       offset = nextBlockOffset;
+      if (offset > buffer.length) {
+        bufferExhausted = true;
+      }
     }
 
     if (storedDetails) {
@@ -317,6 +333,9 @@ function createRarInspector({
         };
       }
       if (!playableEntryFound && sampleEntries.length > 0) {
+        if (bufferExhausted && !sampleEntries.some(isNonVideoMedia)) {
+          return { status: 'rar-stored', details: { ...storedDetails, sampleEntries, truncated: true } };
+        }
         return { status: 'rar-no-video', details: { ...storedDetails, sampleEntries } };
       }
       return { status: 'rar-stored', details: { ...storedDetails, sampleEntries } };
@@ -416,6 +435,26 @@ function decryptRar5Headers(buffer, startOffset, aesKey) {
 
     const encBlockSize = headerBlockSize + ((16 - (headerBlockSize % 16)) % 16);
     pos += encBlockSize;
+
+    let hdrPos = 4 + sizeRes.bytes;
+    hdrPos += typeRes.bytes;
+    const hdrFlagsRes = readRar5Vint(decrypted, hdrPos);
+    if (hdrFlagsRes) {
+      const hdrFlags = hdrFlagsRes.value;
+      hdrPos += hdrFlagsRes.bytes;
+      const hdrHasExtra = (hdrFlags & 0x0001) !== 0;
+      const hdrHasData = (hdrFlags & 0x0002) !== 0;
+      if (hdrHasExtra) {
+        const r = readRar5Vint(decrypted, hdrPos);
+        if (r) hdrPos += r.bytes;
+      }
+      if (hdrHasData) {
+        const r = readRar5Vint(decrypted, hdrPos);
+        if (r && r.value > 0) {
+          pos += r.value;
+        }
+      }
+    }
   }
 
   if (chunks.length === 0) return null;

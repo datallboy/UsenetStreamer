@@ -34,6 +34,7 @@ const {
   isArchiveEntryName,
   isIsoFileName,
   isDiscStructurePath,
+  isNonVideoMediaFile,
   isSevenZipFilename,
   recordSampleEntry,
   applyHeuristicArchiveHints,
@@ -61,7 +62,7 @@ const DEFAULT_OPTIONS = {
   archiveDirs: [],
   nntpConfig: null,
   healthCheckTimeoutMs: 35000,
-  maxDecodedBytes: 256 * 1024,
+  maxDecodedBytes: 64 * 1024,
   nntpMaxConnections: 60,
   reuseNntpPool: true,
   nntpKeepAliveMs: 120000 ,
@@ -588,6 +589,7 @@ const archiveInspector = createArchiveInspector({
   isVideoFileName,
   isArchiveEntryName,
   isDiscStructurePath,
+  isNonVideoMediaFile,
 });
 
 async function inspectLocalArchive(file, archiveDirs) {
@@ -633,29 +635,30 @@ async function inspectArchiveViaNntp(file, ctx, allFiles, nzbPassword) {
   const effectiveFilename = file.filename || guessFilenameFromSubject(file.subject) || '';
   const isSevenZip = isSevenZipFilename(effectiveFilename);
   return runWithClient(ctx.nntpPool, async (client) => {
-    let statStart = null;
-    if (triageState.currentMetrics) {
-      triageState.currentMetrics.statCalls += 1;
-      statStart = Date.now();
-    }
-    try {
-      await statSegmentWithClient(client, segmentId);
-      if (triageState.currentMetrics && statStart !== null) {
-        triageState.currentMetrics.statSuccesses += 1;
-        triageState.currentMetrics.statDurationMs += Date.now() - statStart;
-      }
-    } catch (err) {
-      if (triageState.currentMetrics && statStart !== null) {
-        triageState.currentMetrics.statDurationMs += Date.now() - statStart;
-        if (err.code === 'STAT_MISSING' || err.code === 430) triageState.currentMetrics.statMissing += 1;
-        else triageState.currentMetrics.statErrors += 1;
-      }
-      if (err.code === 'STAT_MISSING' || err.code === 430) return { status: 'stat-missing', details: { segmentId }, segmentId };
-      return { status: 'stat-error', details: { segmentId, message: err.message }, segmentId };
-    }
-
-    // 7z: attempt deep inspection (fetch header + footer, parse coders in pure JS)
+    // For 7z archives, perform a quick STAT check before deep inspection.
+    // For RAR/ZIP, BODY fetch already validates segment existence.
     if (isSevenZip) {
+      let statStart = null;
+      if (triageState.currentMetrics) {
+        triageState.currentMetrics.statCalls += 1;
+        statStart = Date.now();
+      }
+      try {
+        await statSegmentWithClient(client, segmentId);
+        if (triageState.currentMetrics && statStart !== null) {
+          triageState.currentMetrics.statSuccesses += 1;
+          triageState.currentMetrics.statDurationMs += Date.now() - statStart;
+        }
+      } catch (err) {
+        if (triageState.currentMetrics && statStart !== null) {
+          triageState.currentMetrics.statDurationMs += Date.now() - statStart;
+          if (err.code === 'STAT_MISSING' || err.code === 430) triageState.currentMetrics.statMissing += 1;
+          else triageState.currentMetrics.statErrors += 1;
+        }
+        if (err.code === 'STAT_MISSING' || err.code === 430) return { status: 'stat-missing', details: { segmentId }, segmentId };
+        return { status: 'stat-error', details: { segmentId, message: err.message }, segmentId };
+      }
+
       try {
         const deepResult = await inspectSevenZipDeep(file, allFiles || [], client, nzbPassword);
         return { ...deepResult, segmentId };
@@ -682,6 +685,16 @@ async function inspectArchiveViaNntp(file, ctx, allFiles, nzbPassword) {
       // });
       let archiveResult = inspectArchiveBuffer(decoded, nzbPassword);
       archiveResult = applyHeuristicArchiveHints(archiveResult, decoded, { filename: effectiveFilename });
+      if (archiveResult.status === 'rar-header-not-found' && /\.(rar|7z)(?:\.|$)/i.test(effectiveFilename)) {
+        archiveResult = {
+          status: 'rar-no-signature',
+          details: {
+            ...(archiveResult.details || {}),
+            filename: effectiveFilename,
+            firstBytes: decoded.subarray(0, 8).toString('hex'),
+          },
+        };
+      }
       // console.log('[NZB TRIAGE] Archive inspection via NNTP', {
       //   status: archiveResult.status,
       //   details: archiveResult.details,
@@ -728,6 +741,7 @@ function handleArchiveStatus(status, blockers, warnings) {
     case 'rar-disc-structure':
     case 'rar-insufficient-data':
     case 'rar-inconsistent-parts':
+    case 'rar-no-signature':
       blockers.add(status);
       break;
     case 'stat-missing':
