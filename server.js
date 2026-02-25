@@ -25,7 +25,7 @@ const { ensureSharedSecret } = require('./src/middleware/auth');
 const newznabService = require('./src/services/newznab');
 const easynewsService = require('./src/services/easynews');
 const { toBoolean, resolvePreferredLanguages, resolveLanguageLabel, resolveLanguageLabels, collectConfigValues, computeManifestUrl } = require('./src/utils/config');
-const { normalizeReleaseTitle, parseRequestedEpisode, inferMimeType, normalizeIndexerToken, nzbMatchesIndexer } = require('./src/utils/parsers');
+const { normalizeReleaseTitle, parseRequestedEpisode, inferMimeType, normalizeIndexerToken, normalizeResolutionToken, nzbMatchesIndexer } = require('./src/utils/parsers');
 const { annotateNzbResult, prepareSortedResults, getPreferredLanguageMatches, buildTriageTitleMap, prioritizeTriageCandidates, triageDecisionsMatchStatuses, sanitizeDecisionForCache, serializeFinalNzbResults, restoreFinalNzbResults, formatStreamTitle } = require('./src/utils/helpers');
 const indexerService = require('./src/services/indexer');
 const nzbdavService = require('./src/services/nzbdav');
@@ -141,6 +141,7 @@ const {
     qualityFeaturePatterns: QUALITY_FEATURE_PATTERNS,
     buildCombinedLimitMap: appRuntime.buildCombinedLimitMap,
     normalizeIndexerToken,
+    normalizeResolutionToken,
     prioritizeTriageCandidates,
     triageAndRank,
     triageDecisionsMatchStatuses,

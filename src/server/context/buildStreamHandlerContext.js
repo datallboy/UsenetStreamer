@@ -62,6 +62,7 @@ function buildStreamHandlerContext({
     TRIAGE_MAX_CANDIDATES: runtime.TRIAGE_MAX_CANDIDATES,
     buildCombinedLimitMap: helpers.buildCombinedLimitMap,
     normalizeIndexerToken: helpers.normalizeIndexerToken,
+    normalizeResolutionToken: helpers.normalizeResolutionToken,
     prioritizeTriageCandidates: helpers.prioritizeTriageCandidates,
     TRIAGE_ENABLED: runtime.TRIAGE_ENABLED,
     TRIAGE_NNTP_CONFIG: runtime.TRIAGE_NNTP_CONFIG,

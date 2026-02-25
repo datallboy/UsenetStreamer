@@ -91,6 +91,7 @@ async function handleStreamRequestService(req, res, ctx) {
     TRIAGE_MAX_CANDIDATES,
     buildCombinedLimitMap,
     normalizeIndexerToken,
+    normalizeResolutionToken,
     prioritizeTriageCandidates,
     TRIAGE_ENABLED,
     TRIAGE_NNTP_CONFIG,
