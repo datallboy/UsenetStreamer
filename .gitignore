@@ -26,6 +26,7 @@ dist/
 build/
 coverage/
 .nyc_output/
+docs/jsdoc/
 
 # OS artifacts
 .DS_Store

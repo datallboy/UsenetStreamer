@@ -8,7 +8,9 @@
     "build:parser": "tsc -p tsconfig.parser.json",
     "test": "echo \"Error: no test specified\" && exit 1",
     "type-check": "tsc --noEmit",
-    "typecheck": "npm run type-check"
+    "typecheck": "npm run type-check",
+    "docs:jsdoc:clean": "node -e \"require('node:fs').rmSync('docs/jsdoc', { recursive: true, force: true })\"",
+    "docs:jsdoc": "npm run docs:jsdoc:clean && jsdoc -c jsdoc.json"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +32,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.1",
+    "jsdoc": "^4.0.5",
     "typescript": "^5.9.3"
   }
 }
