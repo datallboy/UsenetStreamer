@@ -9,6 +9,7 @@ export * from "./http/admin";
 export * from "./stream/payload";
 export * from "./stream/template-context";
 export * from "./stream/contracts";
+export * from "./stream/deps";
 export * from "./triage/contracts";
 export * from "./integrations";
 export * from "./runtime/snapshot";

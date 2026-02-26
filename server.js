@@ -50,6 +50,7 @@ const specialMetadata = require('./src/services/specialMetadata');
 const tmdbService = require('./src/services/tmdb');
 /** @type {import('./src/types').TvdbClient} */
 const tvdbService = require('./src/services/tvdb');
+const { createGetStreamsUseCase } = require('./src/services/stream/getStreamsUseCase');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
@@ -3607,8 +3608,16 @@ async function streamHandler(req, res) {
   }
 }
 
+/** @type {import('./src/types').StreamDeps} */
+const streamDeps = {
+  handlers: {
+    legacyStreamHandler: streamHandler,
+  },
+};
+const streamHandlerV2 = createGetStreamsUseCase(streamDeps);
+
 ['/:token/stream/:type/:id.json', '/stream/:type/:id.json'].forEach((route) => {
-  app.get(route, streamHandler);
+  app.get(route, streamHandlerV2);
 });
 
 /**

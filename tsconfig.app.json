@@ -12,6 +12,7 @@
     "src/types/http/**/*.ts",
     "src/types/runtime/**/*.ts",
     "src/types/stream/template-context.ts",
+    "src/types/stream/deps.ts",
     "src/types/api.ts",
     "src/types/index.ts"
   ],
