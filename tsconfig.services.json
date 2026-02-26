@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "./src/types",
+    "outDir": "./node_modules/.cache/tsbuild/services",
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuild/services.tsbuildinfo"
+  },
+  "include": [
+    "src/types/triage/**/*.ts",
+    "src/types/stream/payload.ts",
+    "src/types/stream/contracts.ts"
+  ],
+  "references": [
+    { "path": "./tsconfig.shared.json" }
+  ]
+}

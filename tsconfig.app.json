@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "./src/types",
+    "outDir": "./node_modules/.cache/tsbuild/app",
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuild/app.tsbuildinfo"
+  },
+  "include": [
+    "src/types/http/**/*.ts",
+    "src/types/runtime/**/*.ts",
+    "src/types/stream/template-context.ts",
+    "src/types/api.ts",
+    "src/types/index.ts"
+  ],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.integrations.json" },
+    { "path": "./tsconfig.services.json" }
+  ]
+}

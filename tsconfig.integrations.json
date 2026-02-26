@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "./src/types",
+    "outDir": "./node_modules/.cache/tsbuild/integrations",
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuild/integrations.tsbuildinfo"
+  },
+  "include": [
+    "src/types/integrations/**/*.ts"
+  ],
+  "references": [
+    { "path": "./tsconfig.shared.json" }
+  ]
+}

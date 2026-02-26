@@ -7,7 +7,7 @@
     "start": "node server.js",
     "build:parser": "tsc -p tsconfig.parser.json",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc -b tsconfig.shared.json tsconfig.integrations.json tsconfig.services.json tsconfig.app.json && tsc --noEmit -p tsconfig.json",
     "typecheck": "npm run type-check",
     "check:layers": "node scripts/check-layer-boundaries.js",
     "docs:jsdoc:clean": "node -e \"require('node:fs').rmSync('docs/jsdoc', { recursive: true, force: true })\"",

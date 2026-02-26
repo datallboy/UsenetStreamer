@@ -1,24 +1,20 @@
 {
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.integrations.json" },
+    { "path": "./tsconfig.services.json" },
+    { "path": "./tsconfig.app.json" }
+  ],
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "moduleResolution": "node",
-    "lib": ["ES2020"],
-    "types": ["node"],
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    "strict": false,
-    "noImplicitAny": false,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
     "incremental": true,
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuild/js-check.tsbuildinfo"
   },
   "include": [
-    "src/types/**/*.ts",
     "src/utils/helpers.js",
     "src/utils/templateEngine.js"
   ],
