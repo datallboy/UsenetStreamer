@@ -51,6 +51,7 @@ EASYNEWS_INDEXER
 # Test scripts and NZB files
 scripts/*
 !scripts/check-layer-boundaries.js
+!scripts/check-layer-js-allowlist.js
 test_nzbs/
 assets/*.nzb
 *.nzb

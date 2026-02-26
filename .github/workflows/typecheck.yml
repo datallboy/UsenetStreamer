@@ -27,5 +27,8 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
+      - name: Enforce layered JS guard
+        run: npm run check:layer-js
+
       - name: Enforce layer boundaries
         run: npm run check:layers

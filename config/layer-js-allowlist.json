@@ -1,0 +1,16 @@
+{
+  "allowlist": [
+    "src/routes/stream/registerStreamRoutes.js",
+    "src/services/easynews/index.js",
+    "src/services/indexer.js",
+    "src/services/metadata/releaseParser.js",
+    "src/services/newznab.js",
+    "src/services/nzbdav.js",
+    "src/services/specialMetadata.js",
+    "src/services/stream/getStreamsUseCase.js",
+    "src/services/tmdb.js",
+    "src/services/triage/index.js",
+    "src/services/triage/runner.js",
+    "src/services/tvdb.js"
+  ]
+}
