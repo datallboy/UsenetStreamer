@@ -671,6 +671,7 @@ let TRIAGE_ARCHIVE_SAMPLE_COUNT = 1;
 let TRIAGE_REUSE_POOL = runtimeSnapshot.triage.reusePool;
 let TRIAGE_NNTP_KEEP_ALIVE_MS = runtimeSnapshot.triage.nntpKeepAliveMs;
 let TRIAGE_PREFETCH_FIRST_VERIFIED = runtimeSnapshot.triage.prefetchFirstVerified;
+let STREAM_V2_ENABLED = runtimeSnapshot.featureFlags.streamV2Enabled;
 
 let TRIAGE_BASE_OPTIONS = {
   maxDecodedBytes: TRIAGE_MAX_DECODED_BYTES,
@@ -822,6 +823,7 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   TRIAGE_REUSE_POOL = runtimeSnapshot.triage.reusePool;
   TRIAGE_NNTP_KEEP_ALIVE_MS = runtimeSnapshot.triage.nntpKeepAliveMs;
   TRIAGE_PREFETCH_FIRST_VERIFIED = runtimeSnapshot.triage.prefetchFirstVerified;
+  STREAM_V2_ENABLED = runtimeSnapshot.featureFlags.streamV2Enabled;
   TRIAGE_BASE_OPTIONS = {
     maxDecodedBytes: TRIAGE_MAX_DECODED_BYTES,
     nntpMaxConnections: TRIAGE_NNTP_MAX_CONNECTIONS,
@@ -849,6 +851,7 @@ function rebuildRuntimeConfig({ log = true } = {}) {
       indexerManager: INDEXER_MANAGER,
       newznabEnabled: NEWZNAB_ENABLED,
       triageEnabled: TRIAGE_ENABLED,
+      streamV2Enabled: STREAM_V2_ENABLED,
       allowedResolutions: ALLOWED_RESOLUTIONS,
       resolutionLimitPerQuality: RESOLUTION_LIMIT_PER_QUALITY,
     });
@@ -862,6 +865,7 @@ rebuildRuntimeConfig({ log: false });
 const ADMIN_CONFIG_KEYS = [
   'PORT',
   'STREAMING_MODE',
+  'STREAM_V2_ENABLED',
   'ADDON_BASE_URL',
   'ADDON_NAME',
   'ADDON_SHARED_SECRET',
@@ -3616,8 +3620,14 @@ const streamDeps = {
   },
 };
 const streamHandlerV2 = createGetStreamsUseCase(streamDeps);
+const delegatedStreamHandler = async (req, res) => {
+  if (STREAM_V2_ENABLED) {
+    return streamHandlerV2(req, res);
+  }
+  return streamHandler(req, res);
+};
 
-registerStreamRoutes(app, streamHandlerV2);
+registerStreamRoutes(app, delegatedStreamHandler);
 
 /**
  * @param {import('./src/types').EasynewsNzbHandlerRequest} req

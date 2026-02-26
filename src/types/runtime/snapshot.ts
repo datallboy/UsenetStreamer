@@ -95,4 +95,7 @@ export interface RuntimeSnapshot {
     readonly sorting: RuntimeSortingSnapshot;
     readonly triage: RuntimeTriageSnapshot;
     readonly nzbdav: RuntimeNzbdavSnapshot;
+    readonly featureFlags: {
+        readonly streamV2Enabled: boolean;
+    };
 }

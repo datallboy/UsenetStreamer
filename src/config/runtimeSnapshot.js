@@ -165,6 +165,9 @@ function createRuntimeSnapshot(env = process.env, options = {}) {
         return Math.floor(raw);
       })(),
     },
+    featureFlags: {
+      streamV2Enabled: toBoolean(env.STREAM_V2_ENABLED, false),
+    },
   };
 
   // Defensively detach mutable arrays before freezing.
