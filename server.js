@@ -51,6 +51,7 @@ const tmdbService = require('./src/services/tmdb');
 /** @type {import('./src/types').TvdbClient} */
 const tvdbService = require('./src/services/tvdb');
 const { createGetStreamsUseCase } = require('./src/services/stream/getStreamsUseCase');
+const { registerStreamRoutes } = require('./src/routes/stream/registerStreamRoutes');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
@@ -3616,9 +3617,7 @@ const streamDeps = {
 };
 const streamHandlerV2 = createGetStreamsUseCase(streamDeps);
 
-['/:token/stream/:type/:id.json', '/stream/:type/:id.json'].forEach((route) => {
-  app.get(route, streamHandlerV2);
-});
+registerStreamRoutes(app, streamHandlerV2);
 
 /**
  * @param {import('./src/types').EasynewsNzbHandlerRequest} req
