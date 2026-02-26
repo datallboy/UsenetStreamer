@@ -49,7 +49,8 @@ server_very_old.js
 EASYNEWS_INDEXER
 
 # Test scripts and NZB files
-scripts/
+scripts/*
+!scripts/check-layer-boundaries.js
 test_nzbs/
 assets/*.nzb
 *.nzb
@@ -58,6 +59,5 @@ assets/*.nzb
 
 test_nzbs/
 
-scripts/
-
 scripts/testTriage.js
+scripts/nzbs/

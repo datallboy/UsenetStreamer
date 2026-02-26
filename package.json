@@ -9,6 +9,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "type-check": "tsc --noEmit",
     "typecheck": "npm run type-check",
+    "check:layers": "node scripts/check-layer-boundaries.js",
     "docs:jsdoc:clean": "node -e \"require('node:fs').rmSync('docs/jsdoc', { recursive: true, force: true })\"",
     "docs:jsdoc": "npm run docs:jsdoc:clean && jsdoc -c jsdoc.json"
   },
