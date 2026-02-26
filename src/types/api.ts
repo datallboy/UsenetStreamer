@@ -11,3 +11,4 @@ export * from "./stream/template-context";
 export * from "./stream/contracts";
 export * from "./triage/contracts";
 export * from "./integrations";
+export * from "./runtime/snapshot";

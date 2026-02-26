@@ -10,6 +10,7 @@ const { promisify } = require('util');
 // webdav is an ES module; we'll import it lazily when first needed
 const path = require('path');
 const runtimeEnv = require('./config/runtimeEnv');
+const { createRuntimeSnapshot } = require('./src/config/runtimeSnapshot');
 
 // Apply runtime environment BEFORE loading any services
 runtimeEnv.applyRuntimeEnv();
@@ -376,52 +377,44 @@ app.use((req, res, next) => {
 
 // Additional authentication middleware is registered after admin routes are defined
 
+const DEFAULT_MAX_RESULT_SIZE_GB = 30;
+/** @type {import('./src/types').RuntimeSnapshot} */
+let runtimeSnapshot = createRuntimeSnapshot(process.env, {
+  defaultPort: 7000,
+  defaultAddonName: DEFAULT_ADDON_NAME,
+  defaultMaxResultSizeGb: DEFAULT_MAX_RESULT_SIZE_GB,
+  serverHost: SERVER_HOST,
+});
+
 // Streaming mode: 'nzbdav' (default) or 'native' (Windows Stremio v5 only)
-let STREAMING_MODE = (process.env.STREAMING_MODE || 'nzbdav').trim().toLowerCase();
-if (!['nzbdav', 'native'].includes(STREAMING_MODE)) STREAMING_MODE = 'nzbdav';
+let STREAMING_MODE = runtimeSnapshot.streaming.mode;
 
 // Configure indexer manager (Prowlarr or NZBHydra)
 // Note: In native streaming mode, manager is forced to 'none'
-let INDEXER_MANAGER = (process.env.INDEXER_MANAGER || 'none').trim().toLowerCase();
-if (STREAMING_MODE === 'native') INDEXER_MANAGER = 'none'; // Force newznab-only in native mode
-let INDEXER_MANAGER_URL = (process.env.INDEXER_MANAGER_URL || process.env.PROWLARR_URL || '').trim();
-let INDEXER_MANAGER_API_KEY = (process.env.INDEXER_MANAGER_API_KEY || process.env.PROWLARR_API_KEY || '').trim();
-let INDEXER_MANAGER_LABEL = INDEXER_MANAGER === 'nzbhydra'
-  ? 'NZBHydra'
-  : INDEXER_MANAGER === 'none'
-    ? 'Disabled'
-    : 'Prowlarr';
-let INDEXER_MANAGER_STRICT_ID_MATCH = toBoolean(process.env.INDEXER_MANAGER_STRICT_ID_MATCH || process.env.PROWLARR_STRICT_ID_MATCH, false);
-let INDEXER_MANAGER_INDEXERS = (() => {
-  const raw = process.env.INDEXER_MANAGER_INDEXERS || process.env.PROWLARR_INDEXERS || '';
-  if (!raw.trim()) return null;
-  if (raw.trim() === '-1') return -1;
-  return parseCommaList(raw);
-})();
+let INDEXER_MANAGER = runtimeSnapshot.indexerManager.manager;
+let INDEXER_MANAGER_URL = runtimeSnapshot.indexerManager.url;
+let INDEXER_MANAGER_API_KEY = runtimeSnapshot.indexerManager.apiKey;
+let INDEXER_MANAGER_LABEL = runtimeSnapshot.indexerManager.label;
+let INDEXER_MANAGER_STRICT_ID_MATCH = runtimeSnapshot.indexerManager.strictIdMatch;
+let INDEXER_MANAGER_INDEXERS = Array.isArray(runtimeSnapshot.indexerManager.indexers)
+  ? runtimeSnapshot.indexerManager.indexers.slice()
+  : runtimeSnapshot.indexerManager.indexers;
 let INDEXER_LOG_PREFIX = '';
-let INDEXER_MANAGER_CACHE_MINUTES = (() => {
-  const raw = Number(process.env.INDEXER_MANAGER_CACHE_MINUTES || process.env.NZBHYDRA_CACHE_MINUTES);
-  return Number.isFinite(raw) && raw > 0 ? raw : (INDEXER_MANAGER === 'nzbhydra' ? 10 : null);
-})();
-let INDEXER_MANAGER_BASE_URL = INDEXER_MANAGER_URL.replace(/\/+$/, '');
-let ADDON_BASE_URL = (process.env.ADDON_BASE_URL || '').trim();
-let ADDON_SHARED_SECRET = (process.env.ADDON_SHARED_SECRET || '').trim();
-let ADDON_NAME = (process.env.ADDON_NAME || DEFAULT_ADDON_NAME).trim() || DEFAULT_ADDON_NAME;
-const DEFAULT_MAX_RESULT_SIZE_GB = 30;
-let NZBDAV_HISTORY_CATALOG_LIMIT = (() => {
-  const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 100);
-  if (!Number.isFinite(raw) || raw < 0) return 100;
-  return Math.floor(raw);
-})();
-let INDEXER_MANAGER_BACKOFF_ENABLED = toBoolean(process.env.INDEXER_MANAGER_BACKOFF_ENABLED, true);
-let INDEXER_MANAGER_BACKOFF_SECONDS = toPositiveInt(process.env.INDEXER_MANAGER_BACKOFF_SECONDS, 120);
+let INDEXER_MANAGER_CACHE_MINUTES = runtimeSnapshot.indexerManager.cacheMinutes;
+let INDEXER_MANAGER_BASE_URL = runtimeSnapshot.indexerManager.baseUrl;
+let ADDON_BASE_URL = runtimeSnapshot.addon.baseUrl;
+let ADDON_SHARED_SECRET = runtimeSnapshot.addon.sharedSecret;
+let ADDON_NAME = runtimeSnapshot.addon.name;
+let NZBDAV_HISTORY_CATALOG_LIMIT = runtimeSnapshot.nzbdav.historyCatalogLimit;
+let INDEXER_MANAGER_BACKOFF_ENABLED = runtimeSnapshot.indexerManager.backoffEnabled;
+let INDEXER_MANAGER_BACKOFF_SECONDS = runtimeSnapshot.indexerManager.backoffSeconds;
 let indexerManagerUnavailableUntil = 0;
 
-let NEWZNAB_ENABLED = toBoolean(process.env.NEWZNAB_ENABLED, false);
-let NEWZNAB_FILTER_NZB_ONLY = toBoolean(process.env.NEWZNAB_FILTER_NZB_ONLY, true);
-let DEBUG_NEWZNAB_SEARCH = toBoolean(process.env.DEBUG_NEWZNAB_SEARCH, false);
-let DEBUG_NEWZNAB_TEST = toBoolean(process.env.DEBUG_NEWZNAB_TEST, false);
-let DEBUG_NEWZNAB_ENDPOINTS = toBoolean(process.env.DEBUG_NEWZNAB_ENDPOINTS, false);
+let NEWZNAB_ENABLED = runtimeSnapshot.newznab.enabled;
+let NEWZNAB_FILTER_NZB_ONLY = runtimeSnapshot.newznab.filterNzbOnly;
+let DEBUG_NEWZNAB_SEARCH = runtimeSnapshot.newznab.debugSearch;
+let DEBUG_NEWZNAB_TEST = runtimeSnapshot.newznab.debugTest;
+let DEBUG_NEWZNAB_ENDPOINTS = runtimeSnapshot.newznab.debugEndpoints;
 let NEWZNAB_CONFIGS = newznabService.getEnvNewznabConfigs({ includeEmpty: false });
 let ACTIVE_NEWZNAB_CONFIGS = newznabService.filterUsableConfigs(NEWZNAB_CONFIGS, { requireEnabled: true, requireApiKey: true });
 const NEWZNAB_LOG_PREFIX = '[NEWZNAB]';
@@ -528,26 +521,6 @@ function logNewznabDebug(message, context = null) {
     console.log(`${NEWZNAB_LOG_PREFIX}[DEBUG] ${message}`);
   }
 }
-
-
-
-function parseAllowedResolutionList(rawValue) {
-  const entries = parseCommaList(rawValue);
-  if (!Array.isArray(entries) || entries.length === 0) return [];
-  return entries
-    .map((entry) => normalizeResolutionToken(entry))
-    .filter(Boolean);
-}
-
-function parseResolutionLimitValue(rawValue) {
-  if (rawValue === undefined || rawValue === null) return null;
-  const normalized = String(rawValue).trim();
-  if (!normalized) return null;
-  const numeric = Number(normalized);
-  if (!Number.isFinite(numeric) || numeric <= 0) return null;
-  return Math.floor(numeric);
-}
-
 function refreshPaidIndexerTokens() {
   const paidTokens = new Set();
   (TRIAGE_PRIORITY_INDEXERS || []).forEach((token) => {
@@ -639,32 +612,21 @@ function dedupeResultsByTitle(results) {
   return deduped;
 }
 
-function buildTriageNntpConfig() {
-  const host = (process.env.NZB_TRIAGE_NNTP_HOST || '').trim();
-  if (!host) return null;
-  return {
-    host,
-    port: toPositiveInt(process.env.NZB_TRIAGE_NNTP_PORT, 119),
-    user: (process.env.NZB_TRIAGE_NNTP_USER || '').trim() || undefined,
-    pass: (process.env.NZB_TRIAGE_NNTP_PASS || '').trim() || undefined,
-    useTLS: toBoolean(process.env.NZB_TRIAGE_NNTP_TLS, false),
-  };
-}
-
 /**
  * Build NNTP servers array for native Stremio v5 streaming.
  * Format: nntps://{user}:{pass}@{host}:{port}/{connections}
  * or nntp:// for non-TLS connections
  */
 function buildNntpServersArray() {
-  const host = (process.env.NZB_TRIAGE_NNTP_HOST || '').trim();
-  if (!host) return [];
+  const nntpConfig = runtimeSnapshot?.triage?.nntpConfig;
+  if (!nntpConfig?.host) return [];
 
-  const port = toPositiveInt(process.env.NZB_TRIAGE_NNTP_PORT, 119);
-  const user = (process.env.NZB_TRIAGE_NNTP_USER || '').trim();
-  const pass = (process.env.NZB_TRIAGE_NNTP_PASS || '').trim();
-  const useTLS = toBoolean(process.env.NZB_TRIAGE_NNTP_TLS, false);
-  const connections = toPositiveInt(process.env.NZB_TRIAGE_NNTP_MAX_CONNECTIONS, 12);
+  const host = nntpConfig.host;
+  const port = nntpConfig.port;
+  const user = nntpConfig.user || '';
+  const pass = nntpConfig.pass || '';
+  const useTLS = Boolean(nntpConfig.useTLS);
+  const connections = runtimeSnapshot?.triage?.nntpMaxConnections || 12;
 
   const protocol = useTLS ? 'nntps' : 'nntp';
   const auth = user && pass ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : '';
@@ -673,44 +635,40 @@ function buildNntpServersArray() {
   return [serverUrl];
 }
 
-let INDEXER_SORT_MODE = normalizeSortMode(process.env.NZB_SORT_MODE, 'quality_then_size');
-let INDEXER_SORT_ORDER = parseCommaList(process.env.NZB_SORT_ORDER);
-let INDEXER_PREFERRED_LANGUAGES = resolvePreferredLanguages(process.env.NZB_PREFERRED_LANGUAGE, []);
-let INDEXER_PREFERRED_QUALITIES = parseCommaList(process.env.NZB_PREFERRED_QUALITIES);
-let INDEXER_PREFERRED_ENCODES = parseCommaList(process.env.NZB_PREFERRED_ENCODES);
-let INDEXER_PREFERRED_RELEASE_GROUPS = parseCommaList(process.env.NZB_PREFERRED_RELEASE_GROUPS);
-let INDEXER_PREFERRED_VISUAL_TAGS = parseCommaList(process.env.NZB_PREFERRED_VISUAL_TAGS);
-let INDEXER_PREFERRED_AUDIO_TAGS = parseCommaList(process.env.NZB_PREFERRED_AUDIO_TAGS);
-let INDEXER_PREFERRED_KEYWORDS = parseCommaList(process.env.NZB_PREFERRED_KEYWORDS);
-let INDEXER_DEDUP_ENABLED = toBoolean(process.env.NZB_DEDUP_ENABLED, true);
-let INDEXER_HIDE_BLOCKED_RESULTS = toBoolean(process.env.NZB_HIDE_BLOCKED_RESULTS, false);
-let INDEXER_MAX_RESULT_SIZE_BYTES = toSizeBytesFromGb(
-  process.env.NZB_MAX_RESULT_SIZE_GB && process.env.NZB_MAX_RESULT_SIZE_GB !== ''
-    ? process.env.NZB_MAX_RESULT_SIZE_GB
-    : DEFAULT_MAX_RESULT_SIZE_GB
-);
-let ALLOWED_RESOLUTIONS = parseAllowedResolutionList(process.env.NZB_ALLOWED_RESOLUTIONS);
-let RELEASE_EXCLUSIONS = parseCommaList(process.env.NZB_RELEASE_EXCLUSIONS);
-let NZB_NAMING_PATTERN = process.env.NZB_NAMING_PATTERN || '';
-let NZB_DISPLAY_NAME_PATTERN = process.env.NZB_DISPLAY_NAME_PATTERN || '';
-let RESOLUTION_LIMIT_PER_QUALITY = parseResolutionLimitValue(process.env.NZB_RESOLUTION_LIMIT_PER_QUALITY);
-let TRIAGE_ENABLED = toBoolean(process.env.NZB_TRIAGE_ENABLED, false);
-let TRIAGE_TIME_BUDGET_MS = toPositiveInt(process.env.NZB_TRIAGE_TIME_BUDGET_MS, 35000);
-let TRIAGE_MAX_CANDIDATES = toPositiveInt(process.env.NZB_TRIAGE_MAX_CANDIDATES, 25);
-let TRIAGE_DOWNLOAD_CONCURRENCY = toPositiveInt(process.env.NZB_TRIAGE_DOWNLOAD_CONCURRENCY, 8);
-let TRIAGE_PRIORITY_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXERS);
-let TRIAGE_PRIORITY_INDEXER_LIMITS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXER_LIMITS);
-let TRIAGE_HEALTH_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_HEALTH_INDEXERS);
-let TRIAGE_SERIALIZED_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_SERIALIZED_INDEXERS);
-let TRIAGE_NNTP_CONFIG = buildTriageNntpConfig();
-let TRIAGE_MAX_DECODED_BYTES = toPositiveInt(process.env.NZB_TRIAGE_MAX_DECODED_BYTES, 32 * 1024);
-let TRIAGE_NNTP_MAX_CONNECTIONS = toPositiveInt(process.env.NZB_TRIAGE_MAX_CONNECTIONS, 12);
-let TRIAGE_MAX_PARALLEL_NZBS = toPositiveInt(process.env.NZB_TRIAGE_MAX_PARALLEL_NZBS, 16);
+let INDEXER_SORT_MODE = runtimeSnapshot.sorting.sortMode;
+let INDEXER_SORT_ORDER = runtimeSnapshot.sorting.sortOrder.slice();
+let INDEXER_PREFERRED_LANGUAGES = runtimeSnapshot.sorting.preferredLanguages.slice();
+let INDEXER_PREFERRED_QUALITIES = runtimeSnapshot.sorting.preferredQualities.slice();
+let INDEXER_PREFERRED_ENCODES = runtimeSnapshot.sorting.preferredEncodes.slice();
+let INDEXER_PREFERRED_RELEASE_GROUPS = runtimeSnapshot.sorting.preferredReleaseGroups.slice();
+let INDEXER_PREFERRED_VISUAL_TAGS = runtimeSnapshot.sorting.preferredVisualTags.slice();
+let INDEXER_PREFERRED_AUDIO_TAGS = runtimeSnapshot.sorting.preferredAudioTags.slice();
+let INDEXER_PREFERRED_KEYWORDS = runtimeSnapshot.sorting.preferredKeywords.slice();
+let INDEXER_DEDUP_ENABLED = runtimeSnapshot.sorting.dedupeEnabled;
+let INDEXER_HIDE_BLOCKED_RESULTS = runtimeSnapshot.sorting.hideBlockedResults;
+let INDEXER_MAX_RESULT_SIZE_BYTES = runtimeSnapshot.sorting.maxResultSizeBytes;
+let ALLOWED_RESOLUTIONS = runtimeSnapshot.sorting.allowedResolutions.slice();
+let RELEASE_EXCLUSIONS = runtimeSnapshot.sorting.releaseExclusions.slice();
+let NZB_NAMING_PATTERN = runtimeSnapshot.sorting.namingPattern;
+let NZB_DISPLAY_NAME_PATTERN = runtimeSnapshot.sorting.displayNamePattern;
+let RESOLUTION_LIMIT_PER_QUALITY = runtimeSnapshot.sorting.resolutionLimitPerQuality;
+let TRIAGE_ENABLED = runtimeSnapshot.triage.enabled;
+let TRIAGE_TIME_BUDGET_MS = runtimeSnapshot.triage.timeBudgetMs;
+let TRIAGE_MAX_CANDIDATES = runtimeSnapshot.triage.maxCandidates;
+let TRIAGE_DOWNLOAD_CONCURRENCY = runtimeSnapshot.triage.downloadConcurrency;
+let TRIAGE_PRIORITY_INDEXERS = runtimeSnapshot.triage.priorityIndexers.slice();
+let TRIAGE_PRIORITY_INDEXER_LIMITS = runtimeSnapshot.triage.priorityIndexerLimits.slice();
+let TRIAGE_HEALTH_INDEXERS = runtimeSnapshot.triage.healthIndexers.slice();
+let TRIAGE_SERIALIZED_INDEXERS = runtimeSnapshot.triage.serializedIndexers.slice();
+let TRIAGE_NNTP_CONFIG = runtimeSnapshot.triage.nntpConfig ? { ...runtimeSnapshot.triage.nntpConfig } : null;
+let TRIAGE_MAX_DECODED_BYTES = runtimeSnapshot.triage.maxDecodedBytes;
+let TRIAGE_NNTP_MAX_CONNECTIONS = runtimeSnapshot.triage.nntpMaxConnections;
+let TRIAGE_MAX_PARALLEL_NZBS = runtimeSnapshot.triage.maxParallelNzbs;
 let TRIAGE_STAT_SAMPLE_COUNT = 0;
 let TRIAGE_ARCHIVE_SAMPLE_COUNT = 1;
-let TRIAGE_REUSE_POOL = toBoolean(process.env.NZB_TRIAGE_REUSE_POOL, true);
-let TRIAGE_NNTP_KEEP_ALIVE_MS = toPositiveInt(process.env.NZB_TRIAGE_NNTP_KEEP_ALIVE_MS, 0);
-let TRIAGE_PREFETCH_FIRST_VERIFIED = toBoolean(process.env.NZB_TRIAGE_PREFETCH_FIRST_VERIFIED, true);
+let TRIAGE_REUSE_POOL = runtimeSnapshot.triage.reusePool;
+let TRIAGE_NNTP_KEEP_ALIVE_MS = runtimeSnapshot.triage.nntpKeepAliveMs;
+let TRIAGE_PREFETCH_FIRST_VERIFIED = runtimeSnapshot.triage.prefetchFirstVerified;
 
 let TRIAGE_BASE_OPTIONS = {
   maxDecodedBytes: TRIAGE_MAX_DECODED_BYTES,
@@ -784,54 +742,42 @@ function restartSharedPoolMonitor() {
 
 function rebuildRuntimeConfig({ log = true } = {}) {
   const previousPort = currentPort;
-  currentPort = Number(process.env.PORT || 7000);
   const previousBaseUrl = ADDON_BASE_URL;
   const previousSharedSecret = ADDON_SHARED_SECRET;
 
-  // Streaming mode: 'nzbdav' (default) or 'native' (Windows Stremio v5 only)
-  STREAMING_MODE = (process.env.STREAMING_MODE || 'nzbdav').trim().toLowerCase();
-  if (!['nzbdav', 'native'].includes(STREAMING_MODE)) STREAMING_MODE = 'nzbdav';
+  runtimeSnapshot = createRuntimeSnapshot(process.env, {
+    defaultPort: 7000,
+    defaultAddonName: DEFAULT_ADDON_NAME,
+    defaultMaxResultSizeGb: DEFAULT_MAX_RESULT_SIZE_GB,
+    serverHost: SERVER_HOST,
+  });
 
-  ADDON_BASE_URL = (process.env.ADDON_BASE_URL || '').trim();
-  ADDON_SHARED_SECRET = (process.env.ADDON_SHARED_SECRET || '').trim();
-  ADDON_NAME = (process.env.ADDON_NAME || DEFAULT_ADDON_NAME).trim() || DEFAULT_ADDON_NAME;
+  currentPort = runtimeSnapshot.server.port;
+  STREAMING_MODE = runtimeSnapshot.streaming.mode;
+  ADDON_BASE_URL = runtimeSnapshot.addon.baseUrl;
+  ADDON_SHARED_SECRET = runtimeSnapshot.addon.sharedSecret;
+  ADDON_NAME = runtimeSnapshot.addon.name;
 
-  INDEXER_MANAGER = (process.env.INDEXER_MANAGER || 'none').trim().toLowerCase();
-  // Force newznab-only in native streaming mode
-  if (STREAMING_MODE === 'native') INDEXER_MANAGER = 'none';
-  INDEXER_MANAGER_URL = (process.env.INDEXER_MANAGER_URL || process.env.PROWLARR_URL || '').trim();
-  INDEXER_MANAGER_API_KEY = (process.env.INDEXER_MANAGER_API_KEY || process.env.PROWLARR_API_KEY || '').trim();
-  INDEXER_MANAGER_LABEL = INDEXER_MANAGER === 'nzbhydra'
-    ? 'NZBHydra'
-    : INDEXER_MANAGER === 'none'
-      ? 'Disabled'
-      : 'Prowlarr';
-  INDEXER_MANAGER_STRICT_ID_MATCH = toBoolean(process.env.INDEXER_MANAGER_STRICT_ID_MATCH || process.env.PROWLARR_STRICT_ID_MATCH, false);
-  INDEXER_MANAGER_INDEXERS = (() => {
-    const raw = process.env.INDEXER_MANAGER_INDEXERS || process.env.PROWLARR_INDEXERS || '';
-    if (!raw.trim()) return null;
-    if (raw.trim() === '-1') return -1;
-    return parseCommaList(raw);
-  })();
-  INDEXER_MANAGER_CACHE_MINUTES = (() => {
-    const raw = Number(process.env.INDEXER_MANAGER_CACHE_MINUTES || process.env.NZBHYDRA_CACHE_MINUTES);
-    return Number.isFinite(raw) && raw > 0 ? raw : (INDEXER_MANAGER === 'nzbhydra' ? 10 : null);
-  })();
-  INDEXER_MANAGER_BASE_URL = INDEXER_MANAGER_URL.replace(/\/+$/, '');
-  INDEXER_MANAGER_BACKOFF_ENABLED = toBoolean(process.env.INDEXER_MANAGER_BACKOFF_ENABLED, true);
-  INDEXER_MANAGER_BACKOFF_SECONDS = toPositiveInt(process.env.INDEXER_MANAGER_BACKOFF_SECONDS, 120);
-  NZBDAV_HISTORY_CATALOG_LIMIT = (() => {
-    const raw = toFiniteNumber(process.env.NZBDAV_HISTORY_CATALOG_LIMIT, 100);
-    if (!Number.isFinite(raw) || raw < 0) return 100;
-    return Math.floor(raw);
-  })();
+  INDEXER_MANAGER = runtimeSnapshot.indexerManager.manager;
+  INDEXER_MANAGER_URL = runtimeSnapshot.indexerManager.url;
+  INDEXER_MANAGER_API_KEY = runtimeSnapshot.indexerManager.apiKey;
+  INDEXER_MANAGER_LABEL = runtimeSnapshot.indexerManager.label;
+  INDEXER_MANAGER_STRICT_ID_MATCH = runtimeSnapshot.indexerManager.strictIdMatch;
+  INDEXER_MANAGER_INDEXERS = Array.isArray(runtimeSnapshot.indexerManager.indexers)
+    ? runtimeSnapshot.indexerManager.indexers.slice()
+    : runtimeSnapshot.indexerManager.indexers;
+  INDEXER_MANAGER_CACHE_MINUTES = runtimeSnapshot.indexerManager.cacheMinutes;
+  INDEXER_MANAGER_BASE_URL = runtimeSnapshot.indexerManager.baseUrl;
+  INDEXER_MANAGER_BACKOFF_ENABLED = runtimeSnapshot.indexerManager.backoffEnabled;
+  INDEXER_MANAGER_BACKOFF_SECONDS = runtimeSnapshot.indexerManager.backoffSeconds;
+  NZBDAV_HISTORY_CATALOG_LIMIT = runtimeSnapshot.nzbdav.historyCatalogLimit;
   indexerManagerUnavailableUntil = 0;
 
-  NEWZNAB_ENABLED = toBoolean(process.env.NEWZNAB_ENABLED, false);
-  NEWZNAB_FILTER_NZB_ONLY = toBoolean(process.env.NEWZNAB_FILTER_NZB_ONLY, true);
-  DEBUG_NEWZNAB_SEARCH = toBoolean(process.env.DEBUG_NEWZNAB_SEARCH, false);
-  DEBUG_NEWZNAB_TEST = toBoolean(process.env.DEBUG_NEWZNAB_TEST, false);
-  DEBUG_NEWZNAB_ENDPOINTS = toBoolean(process.env.DEBUG_NEWZNAB_ENDPOINTS, false);
+  NEWZNAB_ENABLED = runtimeSnapshot.newznab.enabled;
+  NEWZNAB_FILTER_NZB_ONLY = runtimeSnapshot.newznab.filterNzbOnly;
+  DEBUG_NEWZNAB_SEARCH = runtimeSnapshot.newznab.debugSearch;
+  DEBUG_NEWZNAB_TEST = runtimeSnapshot.newznab.debugTest;
+  DEBUG_NEWZNAB_ENDPOINTS = runtimeSnapshot.newznab.debugEndpoints;
   NEWZNAB_CONFIGS = newznabService.getEnvNewznabConfigs({ includeEmpty: false });
   ACTIVE_NEWZNAB_CONFIGS = newznabService.filterUsableConfigs(NEWZNAB_CONFIGS, { requireEnabled: true, requireApiKey: true });
   INDEXER_LOG_PREFIX = buildSearchLogPrefix({
@@ -840,43 +786,40 @@ function rebuildRuntimeConfig({ log = true } = {}) {
     newznabEnabled: NEWZNAB_ENABLED,
   });
 
-  INDEXER_SORT_MODE = normalizeSortMode(process.env.NZB_SORT_MODE, 'quality_then_size');
-  INDEXER_SORT_ORDER = parseCommaList(process.env.NZB_SORT_ORDER);
-  INDEXER_PREFERRED_LANGUAGES = resolvePreferredLanguages(process.env.NZB_PREFERRED_LANGUAGE, []);
-  INDEXER_PREFERRED_QUALITIES = parseCommaList(process.env.NZB_PREFERRED_QUALITIES);
-  INDEXER_PREFERRED_ENCODES = parseCommaList(process.env.NZB_PREFERRED_ENCODES);
-  INDEXER_PREFERRED_RELEASE_GROUPS = parseCommaList(process.env.NZB_PREFERRED_RELEASE_GROUPS);
-  INDEXER_PREFERRED_VISUAL_TAGS = parseCommaList(process.env.NZB_PREFERRED_VISUAL_TAGS);
-  INDEXER_PREFERRED_AUDIO_TAGS = parseCommaList(process.env.NZB_PREFERRED_AUDIO_TAGS);
-  INDEXER_PREFERRED_KEYWORDS = parseCommaList(process.env.NZB_PREFERRED_KEYWORDS);
-  INDEXER_DEDUP_ENABLED = toBoolean(process.env.NZB_DEDUP_ENABLED, true);
-  INDEXER_HIDE_BLOCKED_RESULTS = toBoolean(process.env.NZB_HIDE_BLOCKED_RESULTS, false);
-  INDEXER_MAX_RESULT_SIZE_BYTES = toSizeBytesFromGb(
-    process.env.NZB_MAX_RESULT_SIZE_GB && process.env.NZB_MAX_RESULT_SIZE_GB !== ''
-      ? process.env.NZB_MAX_RESULT_SIZE_GB
-      : DEFAULT_MAX_RESULT_SIZE_GB
-  );
-  ALLOWED_RESOLUTIONS = parseAllowedResolutionList(process.env.NZB_ALLOWED_RESOLUTIONS);
-  RELEASE_EXCLUSIONS = parseCommaList(process.env.NZB_RELEASE_EXCLUSIONS);
-  NZB_NAMING_PATTERN = process.env.NZB_NAMING_PATTERN || '';
-  NZB_DISPLAY_NAME_PATTERN = process.env.NZB_DISPLAY_NAME_PATTERN || '';
-  RESOLUTION_LIMIT_PER_QUALITY = parseResolutionLimitValue(process.env.NZB_RESOLUTION_LIMIT_PER_QUALITY);
+  INDEXER_SORT_MODE = runtimeSnapshot.sorting.sortMode;
+  INDEXER_SORT_ORDER = runtimeSnapshot.sorting.sortOrder.slice();
+  INDEXER_PREFERRED_LANGUAGES = runtimeSnapshot.sorting.preferredLanguages.slice();
+  INDEXER_PREFERRED_QUALITIES = runtimeSnapshot.sorting.preferredQualities.slice();
+  INDEXER_PREFERRED_ENCODES = runtimeSnapshot.sorting.preferredEncodes.slice();
+  INDEXER_PREFERRED_RELEASE_GROUPS = runtimeSnapshot.sorting.preferredReleaseGroups.slice();
+  INDEXER_PREFERRED_VISUAL_TAGS = runtimeSnapshot.sorting.preferredVisualTags.slice();
+  INDEXER_PREFERRED_AUDIO_TAGS = runtimeSnapshot.sorting.preferredAudioTags.slice();
+  INDEXER_PREFERRED_KEYWORDS = runtimeSnapshot.sorting.preferredKeywords.slice();
+  INDEXER_DEDUP_ENABLED = runtimeSnapshot.sorting.dedupeEnabled;
+  INDEXER_HIDE_BLOCKED_RESULTS = runtimeSnapshot.sorting.hideBlockedResults;
+  INDEXER_MAX_RESULT_SIZE_BYTES = runtimeSnapshot.sorting.maxResultSizeBytes;
+  ALLOWED_RESOLUTIONS = runtimeSnapshot.sorting.allowedResolutions.slice();
+  RELEASE_EXCLUSIONS = runtimeSnapshot.sorting.releaseExclusions.slice();
+  NZB_NAMING_PATTERN = runtimeSnapshot.sorting.namingPattern;
+  NZB_DISPLAY_NAME_PATTERN = runtimeSnapshot.sorting.displayNamePattern;
+  RESOLUTION_LIMIT_PER_QUALITY = runtimeSnapshot.sorting.resolutionLimitPerQuality;
 
-  TRIAGE_ENABLED = toBoolean(process.env.NZB_TRIAGE_ENABLED, false);
-  TRIAGE_TIME_BUDGET_MS = toPositiveInt(process.env.NZB_TRIAGE_TIME_BUDGET_MS, 35000);
-  TRIAGE_MAX_CANDIDATES = toPositiveInt(process.env.NZB_TRIAGE_MAX_CANDIDATES, 25);
-  TRIAGE_DOWNLOAD_CONCURRENCY = toPositiveInt(process.env.NZB_TRIAGE_DOWNLOAD_CONCURRENCY, 8);
-  TRIAGE_PRIORITY_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXERS);
-  TRIAGE_PRIORITY_INDEXER_LIMITS = parseCommaList(process.env.NZB_TRIAGE_PRIORITY_INDEXER_LIMITS);
-  TRIAGE_HEALTH_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_HEALTH_INDEXERS);
-  TRIAGE_SERIALIZED_INDEXERS = parseCommaList(process.env.NZB_TRIAGE_SERIALIZED_INDEXERS);
+  TRIAGE_ENABLED = runtimeSnapshot.triage.enabled;
+  TRIAGE_TIME_BUDGET_MS = runtimeSnapshot.triage.timeBudgetMs;
+  TRIAGE_MAX_CANDIDATES = runtimeSnapshot.triage.maxCandidates;
+  TRIAGE_DOWNLOAD_CONCURRENCY = runtimeSnapshot.triage.downloadConcurrency;
+  TRIAGE_PRIORITY_INDEXERS = runtimeSnapshot.triage.priorityIndexers.slice();
+  TRIAGE_PRIORITY_INDEXER_LIMITS = runtimeSnapshot.triage.priorityIndexerLimits.slice();
+  TRIAGE_HEALTH_INDEXERS = runtimeSnapshot.triage.healthIndexers.slice();
+  TRIAGE_SERIALIZED_INDEXERS = runtimeSnapshot.triage.serializedIndexers.slice();
   refreshPaidIndexerTokens();
-  TRIAGE_NNTP_CONFIG = buildTriageNntpConfig();
-  TRIAGE_MAX_DECODED_BYTES = toPositiveInt(process.env.NZB_TRIAGE_MAX_DECODED_BYTES, 32 * 1024);
-  TRIAGE_NNTP_MAX_CONNECTIONS = toPositiveInt(process.env.NZB_TRIAGE_MAX_CONNECTIONS, 60);
-  TRIAGE_MAX_PARALLEL_NZBS = toPositiveInt(process.env.NZB_TRIAGE_MAX_PARALLEL_NZBS, 16);
-  TRIAGE_REUSE_POOL = toBoolean(process.env.NZB_TRIAGE_REUSE_POOL, true);
-  TRIAGE_NNTP_KEEP_ALIVE_MS = toPositiveInt(process.env.NZB_TRIAGE_NNTP_KEEP_ALIVE_MS, 0);
+  TRIAGE_NNTP_CONFIG = runtimeSnapshot.triage.nntpConfig ? { ...runtimeSnapshot.triage.nntpConfig } : null;
+  TRIAGE_MAX_DECODED_BYTES = runtimeSnapshot.triage.maxDecodedBytes;
+  TRIAGE_NNTP_MAX_CONNECTIONS = runtimeSnapshot.triage.nntpMaxConnections;
+  TRIAGE_MAX_PARALLEL_NZBS = runtimeSnapshot.triage.maxParallelNzbs;
+  TRIAGE_REUSE_POOL = runtimeSnapshot.triage.reusePool;
+  TRIAGE_NNTP_KEEP_ALIVE_MS = runtimeSnapshot.triage.nntpKeepAliveMs;
+  TRIAGE_PREFETCH_FIRST_VERIFIED = runtimeSnapshot.triage.prefetchFirstVerified;
   TRIAGE_BASE_OPTIONS = {
     maxDecodedBytes: TRIAGE_MAX_DECODED_BYTES,
     nntpMaxConnections: TRIAGE_NNTP_MAX_CONNECTIONS,
