@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "build:parser": "tsc -p tsconfig.parser.json",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "type-check": "tsc --noEmit",
+    "typecheck": "npm run type-check"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +29,7 @@
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
+    "@types/node": "^25.3.1",
     "typescript": "^5.9.3"
   }
 }

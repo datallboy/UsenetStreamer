@@ -1,4 +1,7 @@
-(function (window) {
+(function (globalScope) {
+    /**
+     * @typedef {import('../types').StreamTemplateContext | Record<string, unknown>} TemplateContext
+     */
 
     function formatBytes(bytes, decimals = 2) {
         if (bytes === 0) return '0 B';
@@ -25,6 +28,9 @@
     }
 
     class TemplateEngine {
+        /**
+         * @param {TemplateContext} context
+         */
         constructor(context) {
             this.context = context;
         }
@@ -173,10 +179,9 @@
         }
     }
 
-
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = TemplateEngine;
     } else {
-        window.TemplateEngine = TemplateEngine;
+        globalScope.TemplateEngine = TemplateEngine;
     }
-})(typeof window !== 'undefined' ? window : this);
+})(globalThis);

@@ -129,25 +129,37 @@ const adminApiRouter = express.Router();
 adminApiRouter.use(express.json({ limit: '1mb' }));
 const adminStatic = express.static(path.join(__dirname, 'admin'));
 
-adminApiRouter.get('/config', (req, res) => {
-  const values = collectConfigValues(ADMIN_CONFIG_KEYS);
-  if (!values.NZB_MAX_RESULT_SIZE_GB) {
-    values.NZB_MAX_RESULT_SIZE_GB = String(DEFAULT_MAX_RESULT_SIZE_GB);
+adminApiRouter.get(
+  '/config',
+  /**
+   * @param {import('./src/types').AdminConfigGetRequest} req
+   * @param {import('./src/types').AdminConfigGetHandlerResponse} res
+   */
+  (req, res) => {
+    const values = collectConfigValues(ADMIN_CONFIG_KEYS);
+    if (!values.NZB_MAX_RESULT_SIZE_GB) {
+      values.NZB_MAX_RESULT_SIZE_GB = String(DEFAULT_MAX_RESULT_SIZE_GB);
+    }
+    if (!values.TMDB_SEARCH_MODE) {
+      values.TMDB_SEARCH_MODE = 'english_only';
+    }
+    res.json({
+      values,
+      manifestUrl: computeManifestUrl(),
+      runtimeEnvPath: runtimeEnv.RUNTIME_ENV_FILE,
+      debugNewznabSearch: isNewznabDebugEnabled(),
+      newznabPresets: newznabService.getAvailableNewznabPresets(),
+      addonVersion: ADDON_VERSION,
+    });
   }
-  if (!values.TMDB_SEARCH_MODE) {
-    values.TMDB_SEARCH_MODE = 'english_only';
-  }
-  res.json({
-    values,
-    manifestUrl: computeManifestUrl(),
-    runtimeEnvPath: runtimeEnv.RUNTIME_ENV_FILE,
-    debugNewznabSearch: isNewznabDebugEnabled(),
-    newznabPresets: newznabService.getAvailableNewznabPresets(),
-    addonVersion: ADDON_VERSION,
-  });
-});
+);
 
-adminApiRouter.post('/config', async (req, res) => {
+adminApiRouter.post('/config',
+  /**
+   * @param {import('./src/types').AdminConfigSaveRequest} req
+   * @param {import('./src/types').AdminConfigSaveHandlerResponse} res
+   */
+  async (req, res) => {
   const payload = req.body || {};
   const incoming = payload.values;
   if (!incoming || typeof incoming !== 'object') {
@@ -272,7 +284,12 @@ adminApiRouter.post('/config', async (req, res) => {
   }
 });
 
-adminApiRouter.post('/test-connections', async (req, res) => {
+adminApiRouter.post('/test-connections',
+  /**
+   * @param {import('./src/types').AdminConnectionTestRequest} req
+   * @param {import('./src/types').AdminConnectionTestHandlerResponse} res
+   */
+  async (req, res) => {
   const payload = req.body || {};
   const { type, values } = payload;
   if (!type || typeof values !== 'object') {
@@ -1227,6 +1244,10 @@ function ensureAddonConfigured() {
 }
 
 // Manifest endpoint
+/**
+ * @param {import('./src/types').ManifestHandlerRequest} req
+ * @param {import('./src/types').ManifestHandlerResponse} res
+ */
 function manifestHandler(req, res) {
   ensureAddonConfigured();
 
@@ -1264,6 +1285,10 @@ function manifestHandler(req, res) {
   app.get(route, manifestHandler);
 });
 
+/**
+ * @param {import('./src/types').CatalogHandlerRequest} req
+ * @param {import('./src/types').CatalogHandlerResponse} res
+ */
 async function catalogHandler(req, res) {
   if (STREAMING_MODE === 'native' || NZBDAV_HISTORY_CATALOG_LIMIT <= 0) {
     res.status(404).json({ metas: [] });
@@ -1313,6 +1338,10 @@ async function catalogHandler(req, res) {
   app.get(route, catalogHandler);
 });
 
+/**
+ * @param {import('./src/types').MetaHandlerRequest} req
+ * @param {import('./src/types').MetaHandlerResponse} res
+ */
 async function metaHandler(req, res) {
   if (STREAMING_MODE === 'native' || NZBDAV_HISTORY_CATALOG_LIMIT <= 0) {
     res.status(404).json({ meta: null });
@@ -1360,6 +1389,10 @@ async function metaHandler(req, res) {
   app.get(route, metaHandler);
 });
 
+/**
+ * @param {import('./src/types').StreamHandlerRequest} req
+ * @param {import('./src/types').StreamHandlerResponse} res
+ */
 async function streamHandler(req, res) {
   const requestStartTs = Date.now();
   const { type, id } = req.params;
@@ -3214,8 +3247,11 @@ async function streamHandler(req, res) {
 
       const tagsString = tags.filter(Boolean).join(' • ');
 
+      /** @type {import('./src/types').StreamTemplateContext} */
       const namingContext = {
-        addon: addonLabel,
+        addon: {
+          name: addonLabel,
+        },
         title: result.parsedTitleDisplay || result.parsedTitle || result.title || '',
         filename: normalizedFilename || '',
         indexer: result.indexer || '',
@@ -3618,6 +3654,10 @@ async function streamHandler(req, res) {
   app.get(route, streamHandler);
 });
 
+/**
+ * @param {import('./src/types').EasynewsNzbHandlerRequest} req
+ * @param {import('./src/types').EasynewsNzbHandlerResponse} res
+ */
 async function handleEasynewsNzbDownload(req, res) {
   if (!easynewsService.isEasynewsEnabled()) {
     res.status(503).json({ error: 'Easynews integration is disabled' });
@@ -3651,6 +3691,10 @@ async function handleEasynewsNzbDownload(req, res) {
   }
 }
 
+/**
+ * @param {import('./src/types').NzbdavStreamHandlerRequest} req
+ * @param {import('./src/types').NzbdavStreamHandlerResponse} res
+ */
 async function handleNzbdavStream(req, res) {
   // Decode base64url encoded params from path if present
   if (req.params.encodedParams && !req.query.downloadUrl) {

@@ -3,6 +3,12 @@ const { parseReleaseMetadata } = require('../services/metadata/releaseParser');
 const { normalizeReleaseTitle } = require('./parsers');
 const { resolveLanguageLabel } = require('./config');
 
+/**
+ * Shared metadata shape returned by release parsing and annotation logic.
+ * Keep broad during JS->TS migration; narrow in typed modules as they move.
+ * @typedef {Object.<string, unknown>} AnnotatedMetadata
+ */
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function annotateNzbResult(result, sortIndex = 0) {
@@ -647,6 +653,12 @@ module.exports = {
 
 const TemplateEngine = require('./templateEngine');
 
+/**
+ * @param {string} pattern
+ * @param {import('../types').StreamTemplateContext | Record<string, unknown>} data
+ * @param {string} [defaultPattern]
+ * @returns {string}
+ */
 function formatStreamTitle(pattern, data, defaultPattern = '{title}') {
   let effectivePattern = (pattern && typeof pattern === 'string' && pattern.trim().length > 0)
     ? pattern
