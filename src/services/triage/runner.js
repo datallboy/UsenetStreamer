@@ -113,6 +113,10 @@ function withTimeout(promise, timeoutMs) {
   });
 }
 
+/**
+ * @param {unknown} decision
+ * @returns {Object}
+ */
 function summarizeDecision(decision) {
   const blockers = Array.isArray(decision?.blockers) ? decision.blockers : [];
   const warnings = Array.isArray(decision?.warnings) ? decision.warnings : [];
@@ -164,6 +168,11 @@ function summarizeDecision(decision) {
   };
 }
 
+/**
+ * @param {Array<Object>} nzbResults
+ * @param {Object} [options]
+ * @returns {Promise<Object>}
+ */
 async function triageAndRank(nzbResults, options = {}) {
   const startTs = Date.now();
   const timeBudgetMs = options.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
@@ -210,8 +219,14 @@ async function triageAndRank(nzbResults, options = {}) {
     candidateByUrl.set(candidate.downloadUrl, candidate);
   });
 
+  /** @type {Map<string, Object>} */
   const decisionMap = new Map();
 
+  /**
+   * @param {string} url
+   * @param {Object} decision
+   * @returns {Object}
+   */
   const attachMetadata = (url, decision) => {
     const candidateInfo = candidateByUrl.get(url);
     if (candidateInfo) {

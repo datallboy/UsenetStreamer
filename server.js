@@ -22,7 +22,9 @@ const {
   testNewznabSearch,
   testTmdbConnection,
 } = require('./src/utils/connectionTests');
-const { triageAndRank } = require('./src/services/triage/runner');
+/** @type {import('./src/types').TriageRunnerClient} */
+const triageRunnerService = require('./src/services/triage/runner');
+const { triageAndRank } = triageRunnerService;
 const { preWarmNntpPool, evictStaleSharedNntpPool } = require('./src/services/triage');
 const {
   getPublishMetadataFromResult,
@@ -31,15 +33,21 @@ const {
 const { parseReleaseMetadata, LANGUAGE_FILTERS, LANGUAGE_SYNONYMS, QUALITY_FEATURE_PATTERNS } = require('./src/services/metadata/releaseParser');
 const cache = require('./src/cache');
 const { ensureSharedSecret } = require('./src/middleware/auth');
+/** @type {import('./src/types').NewznabClient} */
 const newznabService = require('./src/services/newznab');
+/** @type {import('./src/types').EasynewsClient} */
 const easynewsService = require('./src/services/easynews');
 const { toFiniteNumber, toPositiveInt, toBoolean, parseCommaList, parsePathList, normalizeSortMode, resolvePreferredLanguages, resolveLanguageLabel, resolveLanguageLabels, toSizeBytesFromGb, collectConfigValues, computeManifestUrl, stripTrailingSlashes, decodeBase64Value } = require('./src/utils/config');
 const { normalizeReleaseTitle, parseRequestedEpisode, isVideoFileName, fileMatchesEpisode, normalizeNzbdavPath, inferMimeType, normalizeIndexerToken, nzbMatchesIndexer, cleanSpecialSearchTitle, parseFilterList, normalizeResolutionToken } = require('./src/utils/parsers');
 const { sleep, annotateNzbResult, applyMaxSizeFilter, prepareSortedResults, getPreferredLanguageMatch, getPreferredLanguageMatches, triageStatusRank, buildTriageTitleMap, prioritizeTriageCandidates, triageDecisionsMatchStatuses, sanitizeDecisionForCache, serializeFinalNzbResults, restoreFinalNzbResults, safeStat, formatStreamTitle } = require('./src/utils/helpers');
+/** @type {import('./src/types').IndexerClient} */
 const indexerService = require('./src/services/indexer');
+/** @type {import('./src/types').NzbdavClient} */
 const nzbdavService = require('./src/services/nzbdav');
 const specialMetadata = require('./src/services/specialMetadata');
+/** @type {import('./src/types').TmdbClient} */
 const tmdbService = require('./src/services/tmdb');
+/** @type {import('./src/types').TvdbClient} */
 const tvdbService = require('./src/services/tvdb');
 
 const app = express();
@@ -1629,6 +1637,7 @@ async function streamHandler(req, res) {
     let finalNzbResults = [];
     let dedupedSearchResults = [];
     let rawSearchResults = [];
+    /** @type {import('./src/types').TriageDecisionMap} */
     let triageDecisions = cachedTriageDecisionMap
       || (cachedSearchMeta
         ? restoreTriageDecisions(cachedSearchMeta.triageDecisionsSnapshot)
@@ -2874,6 +2883,7 @@ async function streamHandler(req, res) {
     const triageCandidatesToRun = triageEligibleResults.filter((candidate) => !candidateHasConclusiveDecision(candidate));
     const shouldSkipTriageForRequest = requestLacksIdentifiers || isSpecialRequest;
     const shouldAttemptTriage = triageCandidatesToRun.length > 0 && !requestedDisable && !shouldSkipTriageForRequest && (requestedEnable || TRIAGE_ENABLED);
+    /** @type {import('./src/types').TriageRunnerOutcome | null} */
     let triageOutcome = null;
     let triageCompleteForCache = !shouldAttemptTriage;
     let prefetchCandidate = null;
@@ -3048,9 +3058,12 @@ async function streamHandler(req, res) {
     let triageLogSuppressed = false;
     const activePreferredLanguages = resolvedPreferredLanguages;
 
-    const instantStreams = [];
-    const verifiedStreams = [];
-    const regularStreams = [];
+    /** @type {import('./src/types').StreamRankingBuckets} */
+    const streamBuckets = {
+      instantStreams: [],
+      verifiedStreams: [],
+      regularStreams: [],
+    };
 
     finalNzbResults.forEach((result) => {
       // Skip releases matching blocklist (ISO, sample, exe, etc.)
@@ -3535,11 +3548,11 @@ async function streamHandler(req, res) {
       }
 
       if (isInstant) {
-        instantStreams.push(stream);
+        streamBuckets.instantStreams.push(stream);
       } else if (triageStatus === 'verified') {
-        verifiedStreams.push(stream);
+        streamBuckets.verifiedStreams.push(stream);
       } else {
-        regularStreams.push(stream);
+        streamBuckets.regularStreams.push(stream);
       }
 
       if (preferredLanguageMatches.length > 0 || sourceLanguage || releaseLanguages.length > 0) {
@@ -3555,7 +3568,8 @@ async function streamHandler(req, res) {
       }
     });
 
-    const streams = instantStreams.concat(verifiedStreams, regularStreams);
+    const streams = streamBuckets.instantStreams
+      .concat(streamBuckets.verifiedStreams, streamBuckets.regularStreams);
 
     // Log cached streams count (only relevant for NZBDav mode)
     if (STREAMING_MODE !== 'native') {
