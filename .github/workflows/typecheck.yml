@@ -30,6 +30,9 @@ jobs:
       - name: Run endpoint smoke checks
         run: npm run smoke:endpoints
 
+      - name: Verify golden fixture parity
+        run: npm run fixtures:check-core
+
       - name: Enforce layered JS guard
         run: npm run check:layer-js
 
