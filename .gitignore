@@ -20,6 +20,7 @@ pids
 .env.local
 .env.*.local
 config/staging.common.env
+runtime-env.json
 config/runtime-env.json
 
 # Build outputs
@@ -28,6 +29,8 @@ build/
 coverage/
 .nyc_output/
 docs/jsdoc/
+out/
+.tmp/
 
 # OS artifacts
 .DS_Store

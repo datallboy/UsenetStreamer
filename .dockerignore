@@ -5,8 +5,11 @@ Dockerfile
 .git
 .gitignore
 .env
+config/staging.common.env
 config/runtime-env.json
 config/*.json
+out/
+.tmp/
 *.md~
 
 
