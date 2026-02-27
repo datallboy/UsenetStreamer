@@ -27,6 +27,9 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
+      - name: Run endpoint smoke checks
+        run: npm run smoke:endpoints
+
       - name: Enforce layered JS guard
         run: npm run check:layer-js
 

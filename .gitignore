@@ -52,6 +52,7 @@ EASYNEWS_INDEXER
 scripts/*
 !scripts/check-layer-boundaries.js
 !scripts/check-layer-js-allowlist.js
+!scripts/smoke-endpoints.js
 test_nzbs/
 assets/*.nzb
 *.nzb
