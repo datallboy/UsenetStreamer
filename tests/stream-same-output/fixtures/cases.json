@@ -1,0 +1,64 @@
+[
+  {
+    "id": "movie-basic-stream",
+    "request": {
+      "params": {
+        "type": "movie",
+        "id": "tt1234567"
+      },
+      "query": {
+        "language": "en"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "streams": [
+          {
+            "name": "UsenetStreamer",
+            "title": "Demo Movie 1080p",
+            "url": "http://localhost:7000/nzb/stream/demo-movie"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "series-empty-streams",
+    "request": {
+      "params": {
+        "type": "series",
+        "id": "tt7654321:1:2"
+      },
+      "query": {
+        "season": "1",
+        "episode": "2"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "streams": []
+      }
+    }
+  },
+  {
+    "id": "upstream-error-shape",
+    "request": {
+      "params": {
+        "type": "movie",
+        "id": "tt0000000"
+      },
+      "query": {
+        "triageEnabled": "true"
+      }
+    },
+    "response": {
+      "status": 503,
+      "body": {
+        "streams": [],
+        "error": "Indexer manager unavailable."
+      }
+    }
+  }
+]

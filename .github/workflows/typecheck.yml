@@ -32,3 +32,6 @@ jobs:
 
       - name: Enforce layer boundaries
         run: npm run check:layers
+
+      - name: Run stream same-output tests
+        run: npm run test:stream-same-output
