@@ -1,0 +1,106 @@
+{
+  "fixtureVersion": 1,
+  "fixtureType": "triage-outcomes",
+  "profile": "runner-baseline",
+  "generatedAt": "2026-02-27T17:39:42.433Z",
+  "cases": [
+    {
+      "id": "empty-candidates",
+      "description": "No NZB candidates should produce empty decisions.",
+      "input": [],
+      "options": {
+        "timeBudgetMs": 500,
+        "maxCandidates": 5
+      },
+      "expected": {
+        "timedOut": false,
+        "candidatesConsidered": 0,
+        "evaluatedCount": 0,
+        "fetchFailures": 0,
+        "decisions": []
+      }
+    },
+    {
+      "id": "fetch-error-single",
+      "description": "Unreachable NZB URL should produce fetch-error decision.",
+      "input": [
+        {
+          "title": "Unreachable NZB",
+          "downloadUrl": "http://127.0.0.1:1/unreachable.nzb",
+          "size": 1024,
+          "indexerId": "fixture-indexer"
+        }
+      ],
+      "options": {
+        "timeBudgetMs": 5000,
+        "downloadTimeoutMs": 100,
+        "maxCandidates": 1,
+        "downloadConcurrency": 1
+      },
+      "expected": {
+        "timedOut": false,
+        "candidatesConsidered": 1,
+        "evaluatedCount": 0,
+        "fetchFailures": 1,
+        "decisions": [
+          {
+            "downloadUrl": "http://127.0.0.1:1/unreachable.nzb",
+            "status": "fetch-error",
+            "blockers": [
+              "fetch-error"
+            ],
+            "warnings": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "timeout-yields-pending",
+      "description": "Immediate time budget timeout should produce timeout + pending outcomes.",
+      "input": [
+        {
+          "title": "Timeout Candidate A",
+          "downloadUrl": "http://127.0.0.1:1/timeout-a.nzb",
+          "size": 2048,
+          "indexerId": "fixture-indexer-a"
+        },
+        {
+          "title": "Timeout Candidate B",
+          "downloadUrl": "http://127.0.0.1:1/timeout-b.nzb",
+          "size": 2047,
+          "indexerId": "fixture-indexer-b"
+        }
+      ],
+      "options": {
+        "timeBudgetMs": 0,
+        "downloadTimeoutMs": 100,
+        "maxCandidates": 2,
+        "downloadConcurrency": 1
+      },
+      "expected": {
+        "timedOut": true,
+        "candidatesConsidered": 2,
+        "evaluatedCount": 0,
+        "fetchFailures": 0,
+        "decisions": [
+          {
+            "downloadUrl": "http://127.0.0.1:1/timeout-a.nzb",
+            "status": "error",
+            "blockers": [
+              "triage-error"
+            ],
+            "warnings": [
+              "Triage timed out"
+            ]
+          },
+          {
+            "downloadUrl": "http://127.0.0.1:1/timeout-b.nzb",
+            "status": "pending",
+            "blockers": [],
+            "warnings": []
+          }
+        ]
+      }
+    }
+  ]
+}

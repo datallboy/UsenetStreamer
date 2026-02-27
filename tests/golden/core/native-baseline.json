@@ -1,7 +1,8 @@
 {
-  "fixtureVersion": 1,
+  "fixtureVersion": 2,
+  "fixtureType": "http-endpoints",
   "profile": "native-baseline",
-  "generatedAt": "2026-02-27T17:28:09.415Z",
+  "generatedAt": "2026-02-27T17:39:42.132Z",
   "baseUrl": "{{BASE_URL}}",
   "env": {
     "STREAMING_MODE": "native",
@@ -60,12 +61,30 @@
       }
     },
     {
-      "id": "stream",
+      "id": "stream-invalid-id",
       "method": "GET",
       "path": "/stream/movie/bad-id.json",
       "status": 400,
       "body": {
         "error": "Unsupported ID prefix for indexer manager search: bad-id"
+      }
+    },
+    {
+      "id": "easynews-disabled",
+      "method": "GET",
+      "path": "/easynews/nzb",
+      "status": 503,
+      "body": {
+        "error": "Easynews integration is disabled"
+      }
+    },
+    {
+      "id": "nzbdav-stream-missing-params",
+      "method": "GET",
+      "path": "/nzb/stream",
+      "status": 400,
+      "body": {
+        "error": "downloadUrl or historyNzoId query parameter is required"
       }
     }
   ]

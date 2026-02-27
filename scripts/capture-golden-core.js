@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
+const { triageAndRank } = require('../src/services/triage/runner');
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -60,11 +61,8 @@ async function waitForServer(baseUrl, timeoutMs = 15000) {
   throw lastError || new Error('server readiness timeout');
 }
 
-async function main() {
-  const repoRoot = path.resolve(__dirname, '..');
-  const fixturesDir = path.join(repoRoot, 'tests', 'golden', 'core');
-  const fixturePath = path.join(fixturesDir, 'native-baseline.json');
-  const tempConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'usenetstreamer-golden-'));
+async function captureHttpFixture(repoRoot, fixtureConfig) {
+  const tempConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), `usenetstreamer-golden-${fixtureConfig.profile}-`));
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -74,12 +72,8 @@ async function main() {
       ...process.env,
       PORT: String(port),
       ADDON_BASE_URL: baseUrl,
-      STREAMING_MODE: 'native',
-      INDEXER_MANAGER: 'none',
-      NEWZNAB_ENABLED: 'false',
-      EASYNEWS_ENABLED: 'false',
-      NZB_TRIAGE_ENABLED: 'false',
       CONFIG_DIR: tempConfigDir,
+      ...fixtureConfig.env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -96,32 +90,155 @@ async function main() {
 
   try {
     await waitForServer(baseUrl);
-    const cases = [
-      { id: 'manifest', method: 'GET', path: '/manifest.json' },
-      { id: 'catalog', method: 'GET', path: '/catalog/movie/nzbdav_completed.json' },
-      { id: 'meta', method: 'GET', path: '/meta/movie/nzbdav:test-id.json' },
-      { id: 'stream', method: 'GET', path: '/stream/movie/bad-id.json' },
-    ];
-
     const results = [];
-    for (const entry of cases) {
-      const response = await fetch(`${baseUrl}${entry.path}`, { method: entry.method });
+    for (const entry of fixtureConfig.cases) {
+      const response = await fetch(`${baseUrl}${entry.path}`, { method: entry.method || 'GET' });
       const body = await response.json().catch(() => null);
       results.push({
         id: entry.id,
-        method: entry.method,
+        method: entry.method || 'GET',
         path: entry.path,
         status: response.status,
         body: deepReplaceBaseUrl(body, baseUrl),
       });
     }
 
-    fs.mkdirSync(fixturesDir, { recursive: true });
+    const fixturePath = path.join(repoRoot, 'tests', 'golden', 'core', `${fixtureConfig.profile}.json`);
+    fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
+
     const payload = {
-      fixtureVersion: 1,
-      profile: 'native-baseline',
+      fixtureVersion: 2,
+      fixtureType: 'http-endpoints',
+      profile: fixtureConfig.profile,
       generatedAt: new Date().toISOString(),
       baseUrl: '{{BASE_URL}}',
+      env: fixtureConfig.env,
+      cases: results,
+    };
+
+    fs.writeFileSync(fixturePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    console.log(`[golden] wrote ${path.relative(repoRoot, fixturePath)}`);
+  } catch (error) {
+    console.error(`[golden] capture failed for profile ${fixtureConfig.profile}: ${error?.message || error}`);
+    if (stderr.trim()) {
+      console.error('[golden] server stderr:');
+      console.error(stderr.trim());
+    }
+    throw error;
+  } finally {
+    cleanup();
+  }
+}
+
+function normalizeDecisionMap(decisions) {
+  return Array.from(decisions.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([downloadUrl, decision]) => ({
+      downloadUrl,
+      status: decision?.status || null,
+      blockers: Array.isArray(decision?.blockers) ? decision.blockers.slice() : [],
+      warnings: Array.isArray(decision?.warnings) ? decision.warnings.slice() : [],
+    }));
+}
+
+function normalizeTriageOutcome(outcome) {
+  return {
+    timedOut: Boolean(outcome?.timedOut),
+    candidatesConsidered: Number.isFinite(outcome?.candidatesConsidered) ? outcome.candidatesConsidered : 0,
+    evaluatedCount: Number.isFinite(outcome?.evaluatedCount) ? outcome.evaluatedCount : 0,
+    fetchFailures: Number.isFinite(outcome?.fetchFailures) ? outcome.fetchFailures : 0,
+    decisions: normalizeDecisionMap(outcome?.decisions || new Map()),
+  };
+}
+
+async function captureTriageFixture(repoRoot) {
+  const scenarios = [
+    {
+      id: 'empty-candidates',
+      description: 'No NZB candidates should produce empty decisions.',
+      input: [],
+      options: {
+        timeBudgetMs: 500,
+        maxCandidates: 5,
+      },
+    },
+    {
+      id: 'fetch-error-single',
+      description: 'Unreachable NZB URL should produce fetch-error decision.',
+      input: [
+        {
+          title: 'Unreachable NZB',
+          downloadUrl: 'http://127.0.0.1:1/unreachable.nzb',
+          size: 1024,
+          indexerId: 'fixture-indexer',
+        },
+      ],
+      options: {
+        timeBudgetMs: 5000,
+        downloadTimeoutMs: 100,
+        maxCandidates: 1,
+        downloadConcurrency: 1,
+      },
+    },
+    {
+      id: 'timeout-yields-pending',
+      description: 'Immediate time budget timeout should produce timeout + pending outcomes.',
+      input: [
+        {
+          title: 'Timeout Candidate A',
+          downloadUrl: 'http://127.0.0.1:1/timeout-a.nzb',
+          size: 2048,
+          indexerId: 'fixture-indexer-a',
+        },
+        {
+          title: 'Timeout Candidate B',
+          downloadUrl: 'http://127.0.0.1:1/timeout-b.nzb',
+          size: 2047,
+          indexerId: 'fixture-indexer-b',
+        },
+      ],
+      options: {
+        timeBudgetMs: 0,
+        downloadTimeoutMs: 100,
+        maxCandidates: 2,
+        downloadConcurrency: 1,
+      },
+    },
+  ];
+
+  const cases = [];
+  for (const scenario of scenarios) {
+    const outcome = await triageAndRank(scenario.input, scenario.options);
+    cases.push({
+      id: scenario.id,
+      description: scenario.description,
+      input: scenario.input,
+      options: scenario.options,
+      expected: normalizeTriageOutcome(outcome),
+    });
+  }
+
+  const fixturePath = path.join(repoRoot, 'tests', 'golden', 'triage', 'runner-baseline.json');
+  fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
+
+  const payload = {
+    fixtureVersion: 1,
+    fixtureType: 'triage-outcomes',
+    profile: 'runner-baseline',
+    generatedAt: new Date().toISOString(),
+    cases,
+  };
+
+  fs.writeFileSync(fixturePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  console.log(`[golden] wrote ${path.relative(repoRoot, fixturePath)}`);
+}
+
+async function main() {
+  const repoRoot = path.resolve(__dirname, '..');
+
+  const httpFixtures = [
+    {
+      profile: 'native-baseline',
       env: {
         STREAMING_MODE: 'native',
         INDEXER_MANAGER: 'none',
@@ -129,19 +246,43 @@ async function main() {
         EASYNEWS_ENABLED: 'false',
         NZB_TRIAGE_ENABLED: 'false',
       },
-      cases: results,
-    };
-    fs.writeFileSync(fixturePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-    console.log(`[golden] wrote ${path.relative(repoRoot, fixturePath)}`);
-  } catch (error) {
-    console.error(`[golden] capture failed: ${error?.message || error}`);
-    if (stderr.trim()) {
-      console.error('[golden] server stderr:');
-      console.error(stderr.trim());
+      cases: [
+        { id: 'manifest', method: 'GET', path: '/manifest.json' },
+        { id: 'catalog', method: 'GET', path: '/catalog/movie/nzbdav_completed.json' },
+        { id: 'meta', method: 'GET', path: '/meta/movie/nzbdav:test-id.json' },
+        { id: 'stream-invalid-id', method: 'GET', path: '/stream/movie/bad-id.json' },
+        { id: 'easynews-disabled', method: 'GET', path: '/easynews/nzb' },
+        { id: 'nzbdav-stream-missing-params', method: 'GET', path: '/nzb/stream' },
+      ],
+    },
+    {
+      profile: 'nzbdav-error-baseline',
+      env: {
+        STREAMING_MODE: 'nzbdav',
+        INDEXER_MANAGER: 'none',
+        NEWZNAB_ENABLED: 'false',
+        EASYNEWS_ENABLED: 'false',
+        NZB_TRIAGE_ENABLED: 'false',
+        NZBDAV_URL: '',
+        NZBDAV_API_KEY: '',
+        NZBDAV_WEBDAV_URL: '',
+      },
+      cases: [
+        { id: 'manifest', method: 'GET', path: '/manifest.json' },
+        { id: 'catalog-nzbdav-missing-config', method: 'GET', path: '/catalog/movie/nzbdav_completed.json' },
+        { id: 'meta-nzbdav-missing-config', method: 'GET', path: '/meta/movie/nzbdav:test-id.json' },
+      ],
+    },
+  ];
+
+  try {
+    for (const fixtureConfig of httpFixtures) {
+      await captureHttpFixture(repoRoot, fixtureConfig);
     }
-    process.exitCode = 1;
-  } finally {
-    cleanup();
+    await captureTriageFixture(repoRoot);
+  } catch (error) {
+    console.error(`[golden] fatal: ${error?.message || error}`);
+    process.exit(1);
   }
 }
 

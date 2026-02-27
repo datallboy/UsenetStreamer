@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
+const { triageAndRank } = require('../src/services/triage/runner');
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -96,11 +97,30 @@ function collectDiffs(expected, actual, pointer = '$', diffs = []) {
   return diffs;
 }
 
-async function main() {
-  const repoRoot = path.resolve(__dirname, '..');
-  const fixturePath = path.join(repoRoot, 'tests', 'golden', 'core', 'native-baseline.json');
+function normalizeDecisionMap(decisions) {
+  return Array.from((decisions || new Map()).entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([downloadUrl, decision]) => ({
+      downloadUrl,
+      status: decision?.status || null,
+      blockers: Array.isArray(decision?.blockers) ? decision.blockers.slice() : [],
+      warnings: Array.isArray(decision?.warnings) ? decision.warnings.slice() : [],
+    }));
+}
+
+function normalizeTriageOutcome(outcome) {
+  return {
+    timedOut: Boolean(outcome?.timedOut),
+    candidatesConsidered: Number.isFinite(outcome?.candidatesConsidered) ? outcome.candidatesConsidered : 0,
+    evaluatedCount: Number.isFinite(outcome?.evaluatedCount) ? outcome.evaluatedCount : 0,
+    fetchFailures: Number.isFinite(outcome?.fetchFailures) ? outcome.fetchFailures : 0,
+    decisions: normalizeDecisionMap(outcome?.decisions || new Map()),
+  };
+}
+
+async function verifyHttpFixture(repoRoot, fixturePath) {
   const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
-  const tempConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'usenetstreamer-golden-check-'));
+  const tempConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), `usenetstreamer-golden-check-${fixture.profile || 'profile'}-`));
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -110,12 +130,8 @@ async function main() {
       ...process.env,
       PORT: String(port),
       ADDON_BASE_URL: baseUrl,
-      STREAMING_MODE: fixture.env?.STREAMING_MODE || 'native',
-      INDEXER_MANAGER: fixture.env?.INDEXER_MANAGER || 'none',
-      NEWZNAB_ENABLED: fixture.env?.NEWZNAB_ENABLED || 'false',
-      EASYNEWS_ENABLED: fixture.env?.EASYNEWS_ENABLED || 'false',
-      NZB_TRIAGE_ENABLED: fixture.env?.NZB_TRIAGE_ENABLED || 'false',
       CONFIG_DIR: tempConfigDir,
+      ...(fixture.env || {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -130,9 +146,9 @@ async function main() {
     fs.rmSync(tempConfigDir, { recursive: true, force: true });
   };
 
+  let failures = 0;
   try {
     await waitForServer(baseUrl);
-    let failures = 0;
 
     for (const expectedCase of fixture.cases || []) {
       const response = await fetch(`${baseUrl}${expectedCase.path}`, { method: expectedCase.method || 'GET' });
@@ -147,32 +163,83 @@ async function main() {
 
       if (diffs.length > 0) {
         failures += 1;
-        console.error(`[golden-check] FAIL ${expectedCase.id}`);
+        console.error(`[golden-check] FAIL ${fixture.profile}/${expectedCase.id}`);
         diffs.slice(0, 50).forEach((line) => {
           console.error(`  - ${line}`);
         });
         console.error('  expected body:', JSON.stringify(expectedCase.body, null, 2));
         console.error('  actual body  :', JSON.stringify(normalizedBody, null, 2));
       } else {
-        console.log(`[golden-check] PASS ${expectedCase.id}`);
+        console.log(`[golden-check] PASS ${fixture.profile}/${expectedCase.id}`);
       }
     }
-
-    if (failures > 0) {
-      console.error(`[golden-check] ${failures} fixture case(s) mismatched`);
-      process.exitCode = 1;
-    } else {
-      console.log('[golden-check] All fixture cases matched');
-    }
   } catch (error) {
-    console.error(`[golden-check] fatal: ${error?.message || error}`);
+    failures += 1;
+    console.error(`[golden-check] FAIL ${fixture.profile} startup - ${error?.message || error}`);
     if (stderr.trim()) {
       console.error('[golden-check] server stderr:');
       console.error(stderr.trim());
     }
-    process.exitCode = 1;
   } finally {
     cleanup();
+  }
+
+  return failures;
+}
+
+async function verifyTriageFixture(repoRoot, fixturePath) {
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+  let failures = 0;
+
+  for (const triageCase of fixture.cases || []) {
+    const outcome = await triageAndRank(triageCase.input || [], triageCase.options || {});
+    const normalized = normalizeTriageOutcome(outcome);
+    const diffs = collectDiffs(triageCase.expected, normalized, '$', []);
+
+    if (diffs.length > 0) {
+      failures += 1;
+      console.error(`[golden-check] FAIL triage/${triageCase.id}`);
+      diffs.slice(0, 50).forEach((line) => {
+        console.error(`  - ${line}`);
+      });
+      console.error('  expected:', JSON.stringify(triageCase.expected, null, 2));
+      console.error('  actual  :', JSON.stringify(normalized, null, 2));
+    } else {
+      console.log(`[golden-check] PASS triage/${triageCase.id}`);
+    }
+  }
+
+  return failures;
+}
+
+async function main() {
+  const repoRoot = path.resolve(__dirname, '..');
+  const endpointFixturesDir = path.join(repoRoot, 'tests', 'golden', 'core');
+  const endpointFixturePaths = fs.readdirSync(endpointFixturesDir)
+    .filter((name) => name.endsWith('.json'))
+    .sort()
+    .map((name) => path.join(endpointFixturesDir, name));
+
+  const triageFixturePath = path.join(repoRoot, 'tests', 'golden', 'triage', 'runner-baseline.json');
+
+  let totalFailures = 0;
+
+  for (const fixturePath of endpointFixturePaths) {
+    totalFailures += await verifyHttpFixture(repoRoot, fixturePath);
+  }
+
+  if (fs.existsSync(triageFixturePath)) {
+    totalFailures += await verifyTriageFixture(repoRoot, triageFixturePath);
+  } else {
+    totalFailures += 1;
+    console.error('[golden-check] Missing triage fixture: tests/golden/triage/runner-baseline.json');
+  }
+
+  if (totalFailures > 0) {
+    console.error(`[golden-check] ${totalFailures} fixture case(s) mismatched`);
+    process.exitCode = 1;
+  } else {
+    console.log('[golden-check] All fixture cases matched');
   }
 }
 

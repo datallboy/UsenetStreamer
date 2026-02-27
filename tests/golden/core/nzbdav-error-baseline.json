@@ -1,0 +1,95 @@
+{
+  "fixtureVersion": 2,
+  "fixtureType": "http-endpoints",
+  "profile": "nzbdav-error-baseline",
+  "generatedAt": "2026-02-27T17:39:42.405Z",
+  "baseUrl": "{{BASE_URL}}",
+  "env": {
+    "STREAMING_MODE": "nzbdav",
+    "INDEXER_MANAGER": "none",
+    "NEWZNAB_ENABLED": "false",
+    "EASYNEWS_ENABLED": "false",
+    "NZB_TRIAGE_ENABLED": "false",
+    "NZBDAV_URL": "",
+    "NZBDAV_API_KEY": "",
+    "NZBDAV_WEBDAV_URL": ""
+  },
+  "cases": [
+    {
+      "id": "manifest",
+      "method": "GET",
+      "path": "/manifest.json",
+      "status": 200,
+      "body": {
+        "id": "com.usenet.streamer",
+        "version": "1.7.3",
+        "name": "UsenetStreamer",
+        "description": "Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav",
+        "logo": "{{BASE_URL}}/assets/icon.png",
+        "resources": [
+          "stream",
+          "catalog",
+          "meta"
+        ],
+        "types": [
+          "movie",
+          "series",
+          "channel",
+          "tv"
+        ],
+        "catalogs": [
+          {
+            "type": "movie",
+            "id": "nzbdav_completed",
+            "name": "UsenetStreamer",
+            "pageSize": 20,
+            "extra": [
+              {
+                "name": "skip"
+              }
+            ]
+          },
+          {
+            "type": "series",
+            "id": "nzbdav_completed",
+            "name": "UsenetStreamer",
+            "pageSize": 20,
+            "extra": [
+              {
+                "name": "skip"
+              }
+            ]
+          }
+        ],
+        "idPrefixes": [
+          "tt",
+          "tvdb",
+          "tmdb",
+          "pt",
+          "porndb",
+          "nzbdav"
+        ]
+      }
+    },
+    {
+      "id": "catalog-nzbdav-missing-config",
+      "method": "GET",
+      "path": "/catalog/movie/nzbdav_completed.json",
+      "status": 500,
+      "body": {
+        "metas": [],
+        "error": "NZBDAV_URL is not configured"
+      }
+    },
+    {
+      "id": "meta-nzbdav-missing-config",
+      "method": "GET",
+      "path": "/meta/movie/nzbdav:test-id.json",
+      "status": 500,
+      "body": {
+        "meta": null,
+        "error": "NZBDAV_URL is not configured"
+      }
+    }
+  ]
+}
