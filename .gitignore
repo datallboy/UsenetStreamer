@@ -62,6 +62,7 @@ scripts/*
 !scripts/capture-latency-baseline.js
 !scripts/live-integration-smoke.js
 !scripts/staging-local.sh
+!scripts/run-staging-trial.js
 test_nzbs/
 assets/*.nzb
 *.nzb

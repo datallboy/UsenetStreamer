@@ -1,0 +1,681 @@
+{
+  "taskId": "V2-036",
+  "generatedAt": "2026-02-27T19:51:22.439Z",
+  "samples": 3,
+  "timeoutMs": 15000,
+  "pass": true,
+  "cases": [
+    {
+      "id": "manifest",
+      "path": "/manifest.json"
+    },
+    {
+      "id": "catalog",
+      "path": "/catalog/movie/nzbdav_completed.json"
+    },
+    {
+      "id": "meta",
+      "path": "/meta/movie/nzbdav:test-id.json"
+    },
+    {
+      "id": "stream-invalid-id",
+      "path": "/stream/movie/bad-id.json"
+    },
+    {
+      "id": "easynews-nzb",
+      "path": "/easynews/nzb"
+    },
+    {
+      "id": "nzb-stream-missing-params",
+      "path": "/nzb/stream"
+    }
+  ],
+  "services": [
+    {
+      "serviceId": "v1",
+      "baseUrl": "http://127.0.0.1:17001",
+      "authMode": "token-path"
+    },
+    {
+      "serviceId": "v2-legacy",
+      "baseUrl": "http://127.0.0.1:17002",
+      "authMode": "token-path"
+    },
+    {
+      "serviceId": "v2-enabled",
+      "baseUrl": "http://127.0.0.1:17003",
+      "authMode": "token-path"
+    }
+  ],
+  "serviceAvailability": [
+    {
+      "serviceId": "v1",
+      "manifestReachable": true,
+      "manifestStatus": 200,
+      "manifestFailureRate": 0,
+      "pass": true
+    },
+    {
+      "serviceId": "v2-legacy",
+      "manifestReachable": true,
+      "manifestStatus": 200,
+      "manifestFailureRate": 0,
+      "pass": true
+    },
+    {
+      "serviceId": "v2-enabled",
+      "manifestReachable": true,
+      "manifestStatus": 200,
+      "manifestFailureRate": 0,
+      "pass": true
+    }
+  ],
+  "metrics": [
+    {
+      "serviceId": "v1",
+      "results": [
+        {
+          "caseId": "manifest",
+          "path": "/manifest.json",
+          "samples": 3,
+          "avgMs": 18,
+          "p95Ms": 49,
+          "maxMs": 49,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "id": "com.usenet.streamer",
+              "version": "1.7.3",
+              "name": "UsenetStreamer",
+              "description": "Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav",
+              "logo": "{{BASE_URL}}/assets/icon.png",
+              "resources": [
+                "stream",
+                "catalog",
+                "meta"
+              ],
+              "types": [
+                "movie",
+                "series",
+                "channel",
+                "tv"
+              ],
+              "catalogs": [
+                {
+                  "type": "movie",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                },
+                {
+                  "type": "series",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                }
+              ],
+              "idPrefixes": [
+                "tt",
+                "tvdb",
+                "tmdb",
+                "pt",
+                "porndb",
+                "nzbdav"
+              ]
+            }
+          }
+        },
+        {
+          "caseId": "catalog",
+          "path": "/catalog/movie/nzbdav_completed.json",
+          "samples": 3,
+          "avgMs": 3634,
+          "p95Ms": 3725,
+          "maxMs": 3725,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "metas": []
+            }
+          }
+        },
+        {
+          "caseId": "meta",
+          "path": "/meta/movie/nzbdav:test-id.json",
+          "samples": 3,
+          "avgMs": 3671.33,
+          "p95Ms": 3724,
+          "maxMs": 3724,
+          "failureRate": 0,
+          "representative": {
+            "status": 404,
+            "body": {
+              "meta": null
+            }
+          }
+        },
+        {
+          "caseId": "stream-invalid-id",
+          "path": "/stream/movie/bad-id.json",
+          "samples": 3,
+          "avgMs": 1.67,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Unsupported ID prefix for indexer manager search: bad-id"
+            }
+          }
+        },
+        {
+          "caseId": "easynews-nzb",
+          "path": "/easynews/nzb",
+          "samples": 3,
+          "avgMs": 1.33,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Missing payload parameter"
+            }
+          }
+        },
+        {
+          "caseId": "nzb-stream-missing-params",
+          "path": "/nzb/stream",
+          "samples": 3,
+          "avgMs": 1.33,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "downloadUrl or historyNzoId query parameter is required"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "serviceId": "v2-legacy",
+      "results": [
+        {
+          "caseId": "manifest",
+          "path": "/manifest.json",
+          "samples": 3,
+          "avgMs": 1.67,
+          "p95Ms": 3,
+          "maxMs": 3,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "id": "com.usenet.streamer",
+              "version": "1.7.3",
+              "name": "UsenetStreamer",
+              "description": "Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav",
+              "logo": "{{BASE_URL}}/assets/icon.png",
+              "resources": [
+                "stream",
+                "catalog",
+                "meta"
+              ],
+              "types": [
+                "movie",
+                "series",
+                "channel",
+                "tv"
+              ],
+              "catalogs": [
+                {
+                  "type": "movie",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                },
+                {
+                  "type": "series",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                }
+              ],
+              "idPrefixes": [
+                "tt",
+                "tvdb",
+                "tmdb",
+                "pt",
+                "porndb",
+                "nzbdav"
+              ]
+            }
+          }
+        },
+        {
+          "caseId": "catalog",
+          "path": "/catalog/movie/nzbdav_completed.json",
+          "samples": 3,
+          "avgMs": 3708.33,
+          "p95Ms": 3725,
+          "maxMs": 3725,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "metas": []
+            }
+          }
+        },
+        {
+          "caseId": "meta",
+          "path": "/meta/movie/nzbdav:test-id.json",
+          "samples": 3,
+          "avgMs": 3606.67,
+          "p95Ms": 3724,
+          "maxMs": 3724,
+          "failureRate": 0,
+          "representative": {
+            "status": 404,
+            "body": {
+              "meta": null
+            }
+          }
+        },
+        {
+          "caseId": "stream-invalid-id",
+          "path": "/stream/movie/bad-id.json",
+          "samples": 3,
+          "avgMs": 1.67,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Unsupported ID prefix for indexer manager search: bad-id"
+            }
+          }
+        },
+        {
+          "caseId": "easynews-nzb",
+          "path": "/easynews/nzb",
+          "samples": 3,
+          "avgMs": 1,
+          "p95Ms": 1,
+          "maxMs": 1,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Missing payload parameter"
+            }
+          }
+        },
+        {
+          "caseId": "nzb-stream-missing-params",
+          "path": "/nzb/stream",
+          "samples": 3,
+          "avgMs": 1.33,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "downloadUrl or historyNzoId query parameter is required"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "serviceId": "v2-enabled",
+      "results": [
+        {
+          "caseId": "manifest",
+          "path": "/manifest.json",
+          "samples": 3,
+          "avgMs": 2,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "id": "com.usenet.streamer",
+              "version": "1.7.3",
+              "name": "UsenetStreamer",
+              "description": "Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav",
+              "logo": "{{BASE_URL}}/assets/icon.png",
+              "resources": [
+                "stream",
+                "catalog",
+                "meta"
+              ],
+              "types": [
+                "movie",
+                "series",
+                "channel",
+                "tv"
+              ],
+              "catalogs": [
+                {
+                  "type": "movie",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                },
+                {
+                  "type": "series",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                }
+              ],
+              "idPrefixes": [
+                "tt",
+                "tvdb",
+                "tmdb",
+                "pt",
+                "porndb",
+                "nzbdav"
+              ]
+            }
+          }
+        },
+        {
+          "caseId": "catalog",
+          "path": "/catalog/movie/nzbdav_completed.json",
+          "samples": 3,
+          "avgMs": 3735.33,
+          "p95Ms": 4004,
+          "maxMs": 4004,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "metas": []
+            }
+          }
+        },
+        {
+          "caseId": "meta",
+          "path": "/meta/movie/nzbdav:test-id.json",
+          "samples": 3,
+          "avgMs": 3725,
+          "p95Ms": 3725,
+          "maxMs": 3725,
+          "failureRate": 0,
+          "representative": {
+            "status": 404,
+            "body": {
+              "meta": null
+            }
+          }
+        },
+        {
+          "caseId": "stream-invalid-id",
+          "path": "/stream/movie/bad-id.json",
+          "samples": 3,
+          "avgMs": 2,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Unsupported ID prefix for indexer manager search: bad-id"
+            }
+          }
+        },
+        {
+          "caseId": "easynews-nzb",
+          "path": "/easynews/nzb",
+          "samples": 3,
+          "avgMs": 1,
+          "p95Ms": 1,
+          "maxMs": 1,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Missing payload parameter"
+            }
+          }
+        },
+        {
+          "caseId": "nzb-stream-missing-params",
+          "path": "/nzb/stream",
+          "samples": 3,
+          "avgMs": 1,
+          "p95Ms": 1,
+          "maxMs": 1,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "downloadUrl or historyNzoId query parameter is required"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "v2-legacy vs v1",
+      "checks": [
+        {
+          "caseId": "manifest",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 200,
+          "candidateStatus": 200,
+          "baselineP95Ms": 49,
+          "candidateP95Ms": 3,
+          "allowedP95Ms": 98,
+          "pass": true
+        },
+        {
+          "caseId": "catalog",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 200,
+          "candidateStatus": 200,
+          "baselineP95Ms": 3725,
+          "candidateP95Ms": 3725,
+          "allowedP95Ms": 7450,
+          "pass": true
+        },
+        {
+          "caseId": "meta",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 404,
+          "candidateStatus": 404,
+          "baselineP95Ms": 3724,
+          "candidateP95Ms": 3724,
+          "allowedP95Ms": 7448,
+          "pass": true
+        },
+        {
+          "caseId": "stream-invalid-id",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 400,
+          "candidateStatus": 400,
+          "baselineP95Ms": 2,
+          "candidateP95Ms": 2,
+          "allowedP95Ms": 40,
+          "pass": true
+        },
+        {
+          "caseId": "easynews-nzb",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 400,
+          "candidateStatus": 400,
+          "baselineP95Ms": 2,
+          "candidateP95Ms": 1,
+          "allowedP95Ms": 40,
+          "pass": true
+        },
+        {
+          "caseId": "nzb-stream-missing-params",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 400,
+          "candidateStatus": 400,
+          "baselineP95Ms": 2,
+          "candidateP95Ms": 2,
+          "allowedP95Ms": 40,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "v2-enabled vs v2-legacy",
+      "checks": [
+        {
+          "caseId": "manifest",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 200,
+          "candidateStatus": 200,
+          "baselineP95Ms": 3,
+          "candidateP95Ms": 2,
+          "allowedP95Ms": 40,
+          "pass": true
+        },
+        {
+          "caseId": "catalog",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 200,
+          "candidateStatus": 200,
+          "baselineP95Ms": 3725,
+          "candidateP95Ms": 4004,
+          "allowedP95Ms": 7450,
+          "pass": true
+        },
+        {
+          "caseId": "meta",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 404,
+          "candidateStatus": 404,
+          "baselineP95Ms": 3724,
+          "candidateP95Ms": 3725,
+          "allowedP95Ms": 7448,
+          "pass": true
+        },
+        {
+          "caseId": "stream-invalid-id",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 400,
+          "candidateStatus": 400,
+          "baselineP95Ms": 2,
+          "candidateP95Ms": 2,
+          "allowedP95Ms": 40,
+          "pass": true
+        },
+        {
+          "caseId": "easynews-nzb",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 400,
+          "candidateStatus": 400,
+          "baselineP95Ms": 1,
+          "candidateP95Ms": 1,
+          "allowedP95Ms": 40,
+          "pass": true
+        },
+        {
+          "caseId": "nzb-stream-missing-params",
+          "transportHealthy": true,
+          "statusMatches": true,
+          "bodyMatches": true,
+          "failureRatePass": true,
+          "latencyPass": true,
+          "baselineStatus": 400,
+          "candidateStatus": 400,
+          "baselineP95Ms": 2,
+          "candidateP95Ms": 1,
+          "allowedP95Ms": 40,
+          "pass": true
+        }
+      ]
+    }
+  ]
+}

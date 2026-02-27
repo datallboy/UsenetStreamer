@@ -13,6 +13,7 @@
     "fixtures:check-core": "node scripts/check-golden-core.js",
     "baseline:latency": "node scripts/capture-latency-baseline.js",
     "integration:live": "node scripts/live-integration-smoke.js",
+    "staging:trial": "node scripts/run-staging-trial.js",
     "smoke:endpoints": "node scripts/smoke-endpoints.js",
     "check:layer-js": "node scripts/check-layer-js-allowlist.js",
     "check:layers": "node scripts/check-layer-boundaries.js",

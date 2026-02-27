@@ -58,6 +58,15 @@ Optional shortcuts:
 scripts/staging-local.sh build
 scripts/staging-local.sh seed
 scripts/staging-local.sh up --skip-build
+npm run staging:trial
+```
+
+Faster or scoped trial run examples:
+
+```bash
+STAGING_TRIAL_SAMPLES=2 npm run staging:trial
+STAGING_TRIAL_CASES=manifest,stream-invalid-id,easynews-nzb,nzb-stream-missing-params npm run staging:trial
+STAGING_TRIAL_STREAM_IDS='movie:tt0111161,series:tt0944947:1:1' npm run staging:trial
 ```
 
 ## Local endpoints
