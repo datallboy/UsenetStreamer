@@ -1,0 +1,64 @@
+{
+  "baselineVersion": 1,
+  "generatedAt": "2026-02-27T17:31:08.369Z",
+  "profile": "native-smoke",
+  "sampleCount": 10,
+  "metrics": [
+    {
+      "endpoint": "manifest",
+      "method": "GET",
+      "path": "/manifest.json",
+      "expectedStatus": 200,
+      "sampleCount": 10,
+      "avgMs": 1.97,
+      "p50Ms": 2.03,
+      "p95Ms": 2.72,
+      "maxMs": 2.72,
+      "statusMismatches": 0,
+      "transportErrors": 0,
+      "errorRate": 0
+    },
+    {
+      "endpoint": "catalog",
+      "method": "GET",
+      "path": "/catalog/movie/nzbdav_completed.json",
+      "expectedStatus": 404,
+      "sampleCount": 10,
+      "avgMs": 1.3,
+      "p50Ms": 1.23,
+      "p95Ms": 1.83,
+      "maxMs": 1.83,
+      "statusMismatches": 0,
+      "transportErrors": 0,
+      "errorRate": 0
+    },
+    {
+      "endpoint": "meta",
+      "method": "GET",
+      "path": "/meta/movie/nzbdav:test-id.json",
+      "expectedStatus": 404,
+      "sampleCount": 10,
+      "avgMs": 1.02,
+      "p50Ms": 1.05,
+      "p95Ms": 1.49,
+      "maxMs": 1.49,
+      "statusMismatches": 0,
+      "transportErrors": 0,
+      "errorRate": 0
+    },
+    {
+      "endpoint": "stream",
+      "method": "GET",
+      "path": "/stream/movie/bad-id.json",
+      "expectedStatus": 400,
+      "sampleCount": 10,
+      "avgMs": 1.5,
+      "p50Ms": 0.99,
+      "p95Ms": 5.88,
+      "maxMs": 5.88,
+      "statusMismatches": 0,
+      "transportErrors": 0,
+      "errorRate": 0
+    }
+  ]
+}
