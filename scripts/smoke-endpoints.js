@@ -61,18 +61,24 @@ async function runChecks(baseUrl) {
     {
       name: 'catalog',
       url: `${baseUrl}/catalog/movie/nzbdav_completed.json`,
+      // In smoke runs we force STREAMING_MODE=native.
+      // In native mode, catalog endpoints are intentionally disabled and must return 404.
       expectedStatus: 404,
       shapeCheck: (body) => body && Array.isArray(body.metas),
     },
     {
       name: 'meta',
       url: `${baseUrl}/meta/movie/nzbdav:test-id.json`,
+      // In smoke runs we force STREAMING_MODE=native.
+      // In native mode, meta endpoints are intentionally disabled and must return 404.
       expectedStatus: 404,
       shapeCheck: (body) => body && Object.prototype.hasOwnProperty.call(body, 'meta'),
     },
     {
       name: 'stream',
       url: `${baseUrl}/stream/movie/bad-id.json`,
+      // "bad-id" does not match supported stream ID prefixes (tt/tvdb/tmdb/special ids),
+      // so streamHandler must reject it with a 400 validation error.
       expectedStatus: 400,
       shapeCheck: (body) => body && typeof body.error === 'string',
     },
