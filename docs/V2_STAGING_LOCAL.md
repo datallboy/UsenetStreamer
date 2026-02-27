@@ -1,83 +1,92 @@
-# V2 Local Staging (v1 vs v2)
+# V2 Local Staging (Automated v1/v2 Matrix)
 
-Use this for `V2-036` staging trial runs without self-hosted runners.
+Use this for `V2-036` trial runs without self-hosted runners.
 
-## 1) Build both images
+## Why 3 containers
 
-Build v1 image from `master` (or a known-good baseline commit):
+Run all three side-by-side so you can isolate differences quickly:
 
-```bash
-git checkout master
-git pull
-docker build -t usenetstreamer:staging-v1 .
-```
+- `staging-v1` (control): master behavior
+- `staging-v2-legacy` (same v2 code, `STREAM_V2_ENABLED=false`)
+- `staging-v2` (same v2 code, `STREAM_V2_ENABLED=true`)
 
-Build v2 image from `v2`:
+This tells you whether a regression comes from code drift (`v1` vs `v2`) or from the v2 feature path (`v2-legacy` vs `v2-enabled`).
 
-```bash
-git checkout v2
-git pull
-docker build -t usenetstreamer:staging-v2 .
-```
+## Prerequisite
 
-## 2) Prepare shared config
+Copy your production runtime env file to:
 
-```bash
-cp config/staging.common.env.example config/staging.common.env
-```
+- `config/runtime-env.json`
 
-Fill `config/staging.common.env` with the same integration settings you want both services to use.
+The staging script uses that file as source of truth and writes per-container copies under `out/staging/*/config/runtime-env.json` with local overrides:
 
-## 3) Set image tags and start both services
+- `PORT=7000`
+- `ADDON_BASE_URL` set to each local service URL
+- `STREAM_V2_ENABLED` set per service
+
+## One-command workflow
+
+Start (build + seed + run):
 
 ```bash
-export STAGING_V1_IMAGE=usenetstreamer:staging-v1
-export STAGING_V2_IMAGE=usenetstreamer:staging-v2
-# Optional: start v2 with legacy path first
-# export STAGING_V2_STREAM_V2_ENABLED=false
-
-docker compose -f docker-compose.staging.yml up -d
+scripts/staging-local.sh up
 ```
 
-Services:
-
-- v1: `http://127.0.0.1:17001`
-- v2: `http://127.0.0.1:17002`
-
-## 4) Quick checks
-
-If no addon secret is set:
+Stop and remove containers:
 
 ```bash
-curl -s http://127.0.0.1:17001/manifest.json | jq '.id,.version'
-curl -s http://127.0.0.1:17002/manifest.json | jq '.id,.version'
+scripts/staging-local.sh down
 ```
+
+Restart stack:
+
+```bash
+scripts/staging-local.sh restart
+```
+
+Status/logs:
+
+```bash
+scripts/staging-local.sh status
+scripts/staging-local.sh logs
+scripts/staging-local.sh logs staging-v2
+```
+
+Optional shortcuts:
+
+```bash
+scripts/staging-local.sh build
+scripts/staging-local.sh seed
+scripts/staging-local.sh up --skip-build
+```
+
+## Local endpoints
+
+- v1 control: `http://127.0.0.1:17001`
+- v2 legacy mode: `http://127.0.0.1:17002`
+- v2 enabled mode: `http://127.0.0.1:17003`
 
 If `ADDON_SHARED_SECRET` is set, use tokenized paths:
 
-```bash
-TOKEN="<your-secret>"
-curl -s "http://127.0.0.1:17001/${TOKEN}/manifest.json" | jq '.id,.version'
-curl -s "http://127.0.0.1:17002/${TOKEN}/manifest.json" | jq '.id,.version'
-```
+- `/<token>/manifest.json`
+- `/<token>/stream/:type/:id.json`
 
-## 5) V2-036 trial guidance
+## Ref selection (optional)
 
-1. Keep `staging-v1` as control.
-2. Run `staging-v2` with `STREAM_V2_ENABLED=false` first.
-3. Flip `STREAM_V2_ENABLED=true` for `staging-v2` and repeat checks.
-4. Compare stream responses, errors, and latency trends against v1 baseline.
-5. Roll back v2 quickly by setting `STREAM_V2_ENABLED=false` and recreating `staging-v2`.
+Defaults:
 
-## 6) Tear down
+- `STAGING_V1_REF=master`
+- `STAGING_V2_REF=v2`
+
+Override per run:
 
 ```bash
-docker compose -f docker-compose.staging.yml down
+STAGING_V1_REF=origin/master STAGING_V2_REF=HEAD scripts/staging-local.sh up
 ```
 
-Per-service runtime env state is stored under:
+## V2-036 trial checklist
 
-- `out/staging/v1`
-- `out/staging/v2`
-
-Delete those directories if you want a clean config state.
+1. Run `scripts/staging-local.sh up`.
+2. Verify `manifest` and key stream requests on all 3 services.
+3. Compare response parity and error/latency trends.
+4. If v2-enabled regresses, keep using v2-legacy (or v1) and investigate.

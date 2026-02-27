@@ -58,6 +58,7 @@ scripts/*
 !scripts/check-golden-core.js
 !scripts/capture-latency-baseline.js
 !scripts/live-integration-smoke.js
+!scripts/staging-local.sh
 test_nzbs/
 assets/*.nzb
 *.nzb
