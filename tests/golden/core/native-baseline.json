@@ -1,0 +1,72 @@
+{
+  "fixtureVersion": 1,
+  "profile": "native-baseline",
+  "generatedAt": "2026-02-27T17:28:09.415Z",
+  "baseUrl": "{{BASE_URL}}",
+  "env": {
+    "STREAMING_MODE": "native",
+    "INDEXER_MANAGER": "none",
+    "NEWZNAB_ENABLED": "false",
+    "EASYNEWS_ENABLED": "false",
+    "NZB_TRIAGE_ENABLED": "false"
+  },
+  "cases": [
+    {
+      "id": "manifest",
+      "method": "GET",
+      "path": "/manifest.json",
+      "status": 200,
+      "body": {
+        "id": "com.usenet.streamer.native",
+        "version": "1.7.3",
+        "name": "UsenetStreamer",
+        "description": "Native Usenet streaming for Stremio v5 (Windows) - NZB sources via direct Newznab indexers",
+        "logo": "{{BASE_URL}}/assets/icon.png",
+        "resources": [
+          "stream"
+        ],
+        "types": [
+          "movie",
+          "series",
+          "channel",
+          "tv"
+        ],
+        "catalogs": [],
+        "idPrefixes": [
+          "tt",
+          "tvdb",
+          "tmdb",
+          "pt",
+          "porndb"
+        ]
+      }
+    },
+    {
+      "id": "catalog",
+      "method": "GET",
+      "path": "/catalog/movie/nzbdav_completed.json",
+      "status": 404,
+      "body": {
+        "metas": []
+      }
+    },
+    {
+      "id": "meta",
+      "method": "GET",
+      "path": "/meta/movie/nzbdav:test-id.json",
+      "status": 404,
+      "body": {
+        "meta": null
+      }
+    },
+    {
+      "id": "stream",
+      "method": "GET",
+      "path": "/stream/movie/bad-id.json",
+      "status": 400,
+      "body": {
+        "error": "Unsupported ID prefix for indexer manager search: bad-id"
+      }
+    }
+  ]
+}

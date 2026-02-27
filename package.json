@@ -9,6 +9,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "type-check": "tsc -b tsconfig.shared.json tsconfig.integrations.json tsconfig.services.json tsconfig.app.json && tsc --noEmit -p tsconfig.json",
     "typecheck": "npm run type-check",
+    "fixtures:capture-core": "node scripts/capture-golden-core.js",
     "smoke:endpoints": "node scripts/smoke-endpoints.js",
     "check:layer-js": "node scripts/check-layer-js-allowlist.js",
     "check:layers": "node scripts/check-layer-boundaries.js",
