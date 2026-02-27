@@ -1,0 +1,34 @@
+services:
+  staging-v1:
+    image: ${STAGING_V1_IMAGE:?Set STAGING_V1_IMAGE to your master/v1 image tag}
+    container_name: usenetstreamer-staging-v1
+    restart: unless-stopped
+    env_file:
+      - path: ./config/staging.common.env
+        required: false
+    environment:
+      PORT: "7000"
+      CONFIG_DIR: /data/config
+      ADDON_BASE_URL: ${STAGING_V1_BASE_URL:-http://127.0.0.1:17001}
+      STREAM_V2_ENABLED: "false"
+    ports:
+      - "${STAGING_V1_PORT:-17001}:7000"
+    volumes:
+      - ./out/staging/v1:/data
+
+  staging-v2:
+    image: ${STAGING_V2_IMAGE:?Set STAGING_V2_IMAGE to your v2 image tag}
+    container_name: usenetstreamer-staging-v2
+    restart: unless-stopped
+    env_file:
+      - path: ./config/staging.common.env
+        required: false
+    environment:
+      PORT: "7000"
+      CONFIG_DIR: /data/config
+      ADDON_BASE_URL: ${STAGING_V2_BASE_URL:-http://127.0.0.1:17002}
+      STREAM_V2_ENABLED: ${STAGING_V2_STREAM_V2_ENABLED:-true}
+    ports:
+      - "${STAGING_V2_PORT:-17002}:7000"
+    volumes:
+      - ./out/staging/v2:/data
