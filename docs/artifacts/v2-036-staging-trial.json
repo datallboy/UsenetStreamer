@@ -1,6 +1,6 @@
 {
   "taskId": "V2-036",
-  "generatedAt": "2026-02-27T19:51:22.439Z",
+  "generatedAt": "2026-02-28T04:38:14.034Z",
   "samples": 3,
   "timeoutMs": 15000,
   "pass": true,
@@ -78,9 +78,9 @@
           "caseId": "manifest",
           "path": "/manifest.json",
           "samples": 3,
-          "avgMs": 18,
-          "p95Ms": 49,
-          "maxMs": 49,
+          "avgMs": 16,
+          "p95Ms": 44,
+          "maxMs": 44,
           "failureRate": 0,
           "representative": {
             "status": 200,
@@ -140,9 +140,9 @@
           "caseId": "catalog",
           "path": "/catalog/movie/nzbdav_completed.json",
           "samples": 3,
-          "avgMs": 3634,
-          "p95Ms": 3725,
-          "maxMs": 3725,
+          "avgMs": 3913.67,
+          "p95Ms": 4006,
+          "maxMs": 4006,
           "failureRate": 0,
           "representative": {
             "status": 200,
@@ -155,9 +155,9 @@
           "caseId": "meta",
           "path": "/meta/movie/nzbdav:test-id.json",
           "samples": 3,
-          "avgMs": 3671.33,
-          "p95Ms": 3724,
-          "maxMs": 3724,
+          "avgMs": 3725,
+          "p95Ms": 3725,
+          "maxMs": 3725,
           "failureRate": 0,
           "representative": {
             "status": 404,
@@ -170,9 +170,9 @@
           "caseId": "stream-invalid-id",
           "path": "/stream/movie/bad-id.json",
           "samples": 3,
-          "avgMs": 1.67,
-          "p95Ms": 2,
-          "maxMs": 2,
+          "avgMs": 2.33,
+          "p95Ms": 3,
+          "maxMs": 3,
           "failureRate": 0,
           "representative": {
             "status": 400,
@@ -221,8 +221,8 @@
           "path": "/manifest.json",
           "samples": 3,
           "avgMs": 1.67,
-          "p95Ms": 3,
-          "maxMs": 3,
+          "p95Ms": 2,
+          "maxMs": 2,
           "failureRate": 0,
           "representative": {
             "status": 200,
@@ -282,7 +282,7 @@
           "caseId": "catalog",
           "path": "/catalog/movie/nzbdav_completed.json",
           "samples": 3,
-          "avgMs": 3708.33,
+          "avgMs": 3663,
           "p95Ms": 3725,
           "maxMs": 3725,
           "failureRate": 0,
@@ -297,7 +297,7 @@
           "caseId": "meta",
           "path": "/meta/movie/nzbdav:test-id.json",
           "samples": 3,
-          "avgMs": 3606.67,
+          "avgMs": 3660.67,
           "p95Ms": 3724,
           "maxMs": 3724,
           "failureRate": 0,
@@ -312,7 +312,7 @@
           "caseId": "stream-invalid-id",
           "path": "/stream/movie/bad-id.json",
           "samples": 3,
-          "avgMs": 1.67,
+          "avgMs": 1.33,
           "p95Ms": 2,
           "maxMs": 2,
           "failureRate": 0,
@@ -327,9 +327,151 @@
           "caseId": "easynews-nzb",
           "path": "/easynews/nzb",
           "samples": 3,
+          "avgMs": 1.33,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Missing payload parameter"
+            }
+          }
+        },
+        {
+          "caseId": "nzb-stream-missing-params",
+          "path": "/nzb/stream",
+          "samples": 3,
           "avgMs": 1,
           "p95Ms": 1,
           "maxMs": 1,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "downloadUrl or historyNzoId query parameter is required"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "serviceId": "v2-enabled",
+      "results": [
+        {
+          "caseId": "manifest",
+          "path": "/manifest.json",
+          "samples": 3,
+          "avgMs": 1.67,
+          "p95Ms": 2,
+          "maxMs": 2,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "id": "com.usenet.streamer",
+              "version": "1.7.3",
+              "name": "UsenetStreamer",
+              "description": "Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav",
+              "logo": "{{BASE_URL}}/assets/icon.png",
+              "resources": [
+                "stream",
+                "catalog",
+                "meta"
+              ],
+              "types": [
+                "movie",
+                "series",
+                "channel",
+                "tv"
+              ],
+              "catalogs": [
+                {
+                  "type": "movie",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                },
+                {
+                  "type": "series",
+                  "id": "nzbdav_completed",
+                  "name": "UsenetStreamer",
+                  "pageSize": 20,
+                  "extra": [
+                    {
+                      "name": "skip"
+                    }
+                  ]
+                }
+              ],
+              "idPrefixes": [
+                "tt",
+                "tvdb",
+                "tmdb",
+                "pt",
+                "porndb",
+                "nzbdav"
+              ]
+            }
+          }
+        },
+        {
+          "caseId": "catalog",
+          "path": "/catalog/movie/nzbdav_completed.json",
+          "samples": 3,
+          "avgMs": 3604,
+          "p95Ms": 3643,
+          "maxMs": 3643,
+          "failureRate": 0,
+          "representative": {
+            "status": 200,
+            "body": {
+              "metas": []
+            }
+          }
+        },
+        {
+          "caseId": "meta",
+          "path": "/meta/movie/nzbdav:test-id.json",
+          "samples": 3,
+          "avgMs": 3509.67,
+          "p95Ms": 3531,
+          "maxMs": 3531,
+          "failureRate": 0,
+          "representative": {
+            "status": 404,
+            "body": {
+              "meta": null
+            }
+          }
+        },
+        {
+          "caseId": "stream-invalid-id",
+          "path": "/stream/movie/bad-id.json",
+          "samples": 3,
+          "avgMs": 1,
+          "p95Ms": 1,
+          "maxMs": 1,
+          "failureRate": 0,
+          "representative": {
+            "status": 400,
+            "body": {
+              "error": "Unsupported ID prefix for indexer manager search: bad-id"
+            }
+          }
+        },
+        {
+          "caseId": "easynews-nzb",
+          "path": "/easynews/nzb",
+          "samples": 3,
+          "avgMs": 1.33,
+          "p95Ms": 2,
+          "maxMs": 2,
           "failureRate": 0,
           "representative": {
             "status": 400,
@@ -354,148 +496,6 @@
           }
         }
       ]
-    },
-    {
-      "serviceId": "v2-enabled",
-      "results": [
-        {
-          "caseId": "manifest",
-          "path": "/manifest.json",
-          "samples": 3,
-          "avgMs": 2,
-          "p95Ms": 2,
-          "maxMs": 2,
-          "failureRate": 0,
-          "representative": {
-            "status": 200,
-            "body": {
-              "id": "com.usenet.streamer",
-              "version": "1.7.3",
-              "name": "UsenetStreamer",
-              "description": "Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav",
-              "logo": "{{BASE_URL}}/assets/icon.png",
-              "resources": [
-                "stream",
-                "catalog",
-                "meta"
-              ],
-              "types": [
-                "movie",
-                "series",
-                "channel",
-                "tv"
-              ],
-              "catalogs": [
-                {
-                  "type": "movie",
-                  "id": "nzbdav_completed",
-                  "name": "UsenetStreamer",
-                  "pageSize": 20,
-                  "extra": [
-                    {
-                      "name": "skip"
-                    }
-                  ]
-                },
-                {
-                  "type": "series",
-                  "id": "nzbdav_completed",
-                  "name": "UsenetStreamer",
-                  "pageSize": 20,
-                  "extra": [
-                    {
-                      "name": "skip"
-                    }
-                  ]
-                }
-              ],
-              "idPrefixes": [
-                "tt",
-                "tvdb",
-                "tmdb",
-                "pt",
-                "porndb",
-                "nzbdav"
-              ]
-            }
-          }
-        },
-        {
-          "caseId": "catalog",
-          "path": "/catalog/movie/nzbdav_completed.json",
-          "samples": 3,
-          "avgMs": 3735.33,
-          "p95Ms": 4004,
-          "maxMs": 4004,
-          "failureRate": 0,
-          "representative": {
-            "status": 200,
-            "body": {
-              "metas": []
-            }
-          }
-        },
-        {
-          "caseId": "meta",
-          "path": "/meta/movie/nzbdav:test-id.json",
-          "samples": 3,
-          "avgMs": 3725,
-          "p95Ms": 3725,
-          "maxMs": 3725,
-          "failureRate": 0,
-          "representative": {
-            "status": 404,
-            "body": {
-              "meta": null
-            }
-          }
-        },
-        {
-          "caseId": "stream-invalid-id",
-          "path": "/stream/movie/bad-id.json",
-          "samples": 3,
-          "avgMs": 2,
-          "p95Ms": 2,
-          "maxMs": 2,
-          "failureRate": 0,
-          "representative": {
-            "status": 400,
-            "body": {
-              "error": "Unsupported ID prefix for indexer manager search: bad-id"
-            }
-          }
-        },
-        {
-          "caseId": "easynews-nzb",
-          "path": "/easynews/nzb",
-          "samples": 3,
-          "avgMs": 1,
-          "p95Ms": 1,
-          "maxMs": 1,
-          "failureRate": 0,
-          "representative": {
-            "status": 400,
-            "body": {
-              "error": "Missing payload parameter"
-            }
-          }
-        },
-        {
-          "caseId": "nzb-stream-missing-params",
-          "path": "/nzb/stream",
-          "samples": 3,
-          "avgMs": 1,
-          "p95Ms": 1,
-          "maxMs": 1,
-          "failureRate": 0,
-          "representative": {
-            "status": 400,
-            "body": {
-              "error": "downloadUrl or historyNzoId query parameter is required"
-            }
-          }
-        }
-      ]
     }
   ],
   "comparisons": [
@@ -511,9 +511,9 @@
           "latencyPass": true,
           "baselineStatus": 200,
           "candidateStatus": 200,
-          "baselineP95Ms": 49,
-          "candidateP95Ms": 3,
-          "allowedP95Ms": 98,
+          "baselineP95Ms": 44,
+          "candidateP95Ms": 2,
+          "allowedP95Ms": 88,
           "pass": true
         },
         {
@@ -525,9 +525,9 @@
           "latencyPass": true,
           "baselineStatus": 200,
           "candidateStatus": 200,
-          "baselineP95Ms": 3725,
+          "baselineP95Ms": 4006,
           "candidateP95Ms": 3725,
-          "allowedP95Ms": 7450,
+          "allowedP95Ms": 8012,
           "pass": true
         },
         {
@@ -539,9 +539,9 @@
           "latencyPass": true,
           "baselineStatus": 404,
           "candidateStatus": 404,
-          "baselineP95Ms": 3724,
+          "baselineP95Ms": 3725,
           "candidateP95Ms": 3724,
-          "allowedP95Ms": 7448,
+          "allowedP95Ms": 7450,
           "pass": true
         },
         {
@@ -553,7 +553,7 @@
           "latencyPass": true,
           "baselineStatus": 400,
           "candidateStatus": 400,
-          "baselineP95Ms": 2,
+          "baselineP95Ms": 3,
           "candidateP95Ms": 2,
           "allowedP95Ms": 40,
           "pass": true
@@ -568,7 +568,7 @@
           "baselineStatus": 400,
           "candidateStatus": 400,
           "baselineP95Ms": 2,
-          "candidateP95Ms": 1,
+          "candidateP95Ms": 2,
           "allowedP95Ms": 40,
           "pass": true
         },
@@ -582,7 +582,7 @@
           "baselineStatus": 400,
           "candidateStatus": 400,
           "baselineP95Ms": 2,
-          "candidateP95Ms": 2,
+          "candidateP95Ms": 1,
           "allowedP95Ms": 40,
           "pass": true
         }
@@ -600,7 +600,7 @@
           "latencyPass": true,
           "baselineStatus": 200,
           "candidateStatus": 200,
-          "baselineP95Ms": 3,
+          "baselineP95Ms": 2,
           "candidateP95Ms": 2,
           "allowedP95Ms": 40,
           "pass": true
@@ -615,7 +615,7 @@
           "baselineStatus": 200,
           "candidateStatus": 200,
           "baselineP95Ms": 3725,
-          "candidateP95Ms": 4004,
+          "candidateP95Ms": 3643,
           "allowedP95Ms": 7450,
           "pass": true
         },
@@ -629,7 +629,7 @@
           "baselineStatus": 404,
           "candidateStatus": 404,
           "baselineP95Ms": 3724,
-          "candidateP95Ms": 3725,
+          "candidateP95Ms": 3531,
           "allowedP95Ms": 7448,
           "pass": true
         },
@@ -643,7 +643,7 @@
           "baselineStatus": 400,
           "candidateStatus": 400,
           "baselineP95Ms": 2,
-          "candidateP95Ms": 2,
+          "candidateP95Ms": 1,
           "allowedP95Ms": 40,
           "pass": true
         },
@@ -656,8 +656,8 @@
           "latencyPass": true,
           "baselineStatus": 400,
           "candidateStatus": 400,
-          "baselineP95Ms": 1,
-          "candidateP95Ms": 1,
+          "baselineP95Ms": 2,
+          "candidateP95Ms": 2,
           "allowedP95Ms": 40,
           "pass": true
         },
@@ -670,8 +670,8 @@
           "latencyPass": true,
           "baselineStatus": 400,
           "candidateStatus": 400,
-          "baselineP95Ms": 2,
-          "candidateP95Ms": 1,
+          "baselineP95Ms": 1,
+          "candidateP95Ms": 2,
           "allowedP95Ms": 40,
           "pass": true
         }

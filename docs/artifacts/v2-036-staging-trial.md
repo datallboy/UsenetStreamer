@@ -1,6 +1,6 @@
 # V2-036 Staging Trial Report
 
-Generated: 2026-02-27T19:51:22.439Z
+Generated: 2026-02-28T04:38:14.034Z
 Samples per case: 3
 Result: PASS
 
@@ -8,24 +8,24 @@ Result: PASS
 
 | Service | Case | Status | Avg (ms) | P95 (ms) | Max (ms) | Failure Rate |
 |---|---|---:|---:|---:|---:|---:|
-| v1 | manifest | 200 | 18 | 49 | 49 | 0 |
-| v1 | catalog | 200 | 3634 | 3725 | 3725 | 0 |
-| v1 | meta | 404 | 3671.33 | 3724 | 3724 | 0 |
-| v1 | stream-invalid-id | 400 | 1.67 | 2 | 2 | 0 |
+| v1 | manifest | 200 | 16 | 44 | 44 | 0 |
+| v1 | catalog | 200 | 3913.67 | 4006 | 4006 | 0 |
+| v1 | meta | 404 | 3725 | 3725 | 3725 | 0 |
+| v1 | stream-invalid-id | 400 | 2.33 | 3 | 3 | 0 |
 | v1 | easynews-nzb | 400 | 1.33 | 2 | 2 | 0 |
 | v1 | nzb-stream-missing-params | 400 | 1.33 | 2 | 2 | 0 |
-| v2-legacy | manifest | 200 | 1.67 | 3 | 3 | 0 |
-| v2-legacy | catalog | 200 | 3708.33 | 3725 | 3725 | 0 |
-| v2-legacy | meta | 404 | 3606.67 | 3724 | 3724 | 0 |
-| v2-legacy | stream-invalid-id | 400 | 1.67 | 2 | 2 | 0 |
-| v2-legacy | easynews-nzb | 400 | 1 | 1 | 1 | 0 |
-| v2-legacy | nzb-stream-missing-params | 400 | 1.33 | 2 | 2 | 0 |
-| v2-enabled | manifest | 200 | 2 | 2 | 2 | 0 |
-| v2-enabled | catalog | 200 | 3735.33 | 4004 | 4004 | 0 |
-| v2-enabled | meta | 404 | 3725 | 3725 | 3725 | 0 |
-| v2-enabled | stream-invalid-id | 400 | 2 | 2 | 2 | 0 |
-| v2-enabled | easynews-nzb | 400 | 1 | 1 | 1 | 0 |
-| v2-enabled | nzb-stream-missing-params | 400 | 1 | 1 | 1 | 0 |
+| v2-legacy | manifest | 200 | 1.67 | 2 | 2 | 0 |
+| v2-legacy | catalog | 200 | 3663 | 3725 | 3725 | 0 |
+| v2-legacy | meta | 404 | 3660.67 | 3724 | 3724 | 0 |
+| v2-legacy | stream-invalid-id | 400 | 1.33 | 2 | 2 | 0 |
+| v2-legacy | easynews-nzb | 400 | 1.33 | 2 | 2 | 0 |
+| v2-legacy | nzb-stream-missing-params | 400 | 1 | 1 | 1 | 0 |
+| v2-enabled | manifest | 200 | 1.67 | 2 | 2 | 0 |
+| v2-enabled | catalog | 200 | 3604 | 3643 | 3643 | 0 |
+| v2-enabled | meta | 404 | 3509.67 | 3531 | 3531 | 0 |
+| v2-enabled | stream-invalid-id | 400 | 1 | 1 | 1 | 0 |
+| v2-enabled | easynews-nzb | 400 | 1.33 | 2 | 2 | 0 |
+| v2-enabled | nzb-stream-missing-params | 400 | 1.33 | 2 | 2 | 0 |
 
 ## Parity Checks
 
