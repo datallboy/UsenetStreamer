@@ -41,6 +41,9 @@ const easynewsService = require('./src/services/easynews');
 const { toFiniteNumber, toPositiveInt, toBoolean, parseCommaList, parsePathList, normalizeSortMode, resolvePreferredLanguages, resolveLanguageLabel, resolveLanguageLabels, toSizeBytesFromGb, collectConfigValues, computeManifestUrl, stripTrailingSlashes, decodeBase64Value } = require('./src/utils/config');
 const { normalizeReleaseTitle, parseRequestedEpisode, isVideoFileName, fileMatchesEpisode, normalizeNzbdavPath, inferMimeType, normalizeIndexerToken, nzbMatchesIndexer, cleanSpecialSearchTitle, parseFilterList, normalizeResolutionToken } = require('./src/utils/parsers');
 const { sleep, annotateNzbResult, applyMaxSizeFilter, prepareSortedResults, getPreferredLanguageMatch, getPreferredLanguageMatches, triageStatusRank, buildTriageTitleMap, prioritizeTriageCandidates, triageDecisionsMatchStatuses, sanitizeDecisionForCache, serializeFinalNzbResults, restoreFinalNzbResults, safeStat, formatStreamTitle } = require('./src/utils/helpers');
+const { encodeStreamParams, decodeStreamParams } = require('./src/utils/streamParams');
+const { sanitizeStrictSearchPhrase, matchesStrictSearch } = require('./src/utils/strictSearch');
+const { formatResolutionBadge, extractQualityFeatureBadges } = require('./src/utils/streamFormatting');
 /** @type {import('./src/types').IndexerClient} */
 const indexerService = require('./src/services/indexer');
 /** @type {import('./src/types').NzbdavClient} */
@@ -116,28 +119,6 @@ async function resolvePrefetchedNzbdavJob(downloadUrl) {
     }
   }
   return entry;
-}
-
-function formatResolutionBadge(resolution) {
-  if (!resolution) return null;
-  const normalized = resolution.toLowerCase();
-
-  if (normalized === '8k' || normalized === '4320p') return '8K';
-  if (normalized === '4k' || normalized === '2160p' || normalized === 'uhd') return '4K';
-
-  if (normalized.endsWith('p')) return normalized.toUpperCase();
-  return resolution;
-}
-
-function extractQualityFeatureBadges(title) {
-  if (!title) return [];
-  const badges = [];
-  QUALITY_FEATURE_PATTERNS.forEach(({ label, regex }) => {
-    if (regex.test(title)) {
-      badges.push(label);
-    }
-  });
-  return badges;
 }
 
 app.use(cors());
@@ -1070,21 +1051,6 @@ const CINEMETA_URL = 'https://v3-cinemeta.strem.io/meta';
 const pipelineAsync = promisify(pipeline);
 const posixPath = path.posix;
 
-// Base64url helpers for clean stream URLs (no query params)
-function encodeStreamParams(params) {
-  const json = JSON.stringify(Object.fromEntries(params.entries()));
-  return Buffer.from(json, 'utf8').toString('base64url');
-}
-
-function decodeStreamParams(encoded) {
-  try {
-    const json = Buffer.from(encoded, 'base64url').toString('utf8');
-    return JSON.parse(json);
-  } catch (_) {
-    return null;
-  }
-}
-
 function buildStreamCacheKey({ type, id, query = {}, requestedEpisode = null }) {
   const normalizedQuery = {};
   Object.keys(query)
@@ -1140,46 +1106,6 @@ const VIDEO_MIME_MAP = new Map([
   ['.mpg', 'video/mpeg'],
   ['.mpeg', 'video/mpeg']
 ]);
-
-function sanitizeStrictSearchPhrase(text) {
-  if (!text) return '';
-  return text
-    .replace(/&/g, ' and ')
-    .replace(/[\.\-_:\s]+/g, ' ')
-    .replace(/[^\w\sÀ-ÿ]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-function matchesStrictSearch(title, strictPhrase) {
-  if (!strictPhrase) return true;
-  const candidate = sanitizeStrictSearchPhrase(title);
-  if (!candidate) return false;
-  if (candidate === strictPhrase) return true;
-  const candidateTokens = candidate.split(' ').filter(Boolean);
-  const phraseTokens = strictPhrase.split(' ').filter(Boolean);
-  if (phraseTokens.length === 0) return true;
-
-  // Nothing before first query token, nothing after last query token, gaps allowed in between
-  if (candidateTokens[0] !== phraseTokens[0]) return false;
-  if (candidateTokens[candidateTokens.length - 1] !== phraseTokens[phraseTokens.length - 1]) return false;
-  // Remaining tokens must appear in order, gaps allowed
-  let candidateIdx = 1;
-  for (let i = 1; i < phraseTokens.length; i += 1) {
-    const token = phraseTokens[i];
-    let found = false;
-    while (candidateIdx < candidateTokens.length) {
-      if (candidateTokens[candidateIdx] === token) {
-        found = true;
-        candidateIdx += 1;
-        break;
-      }
-      candidateIdx += 1;
-    }
-    if (!found) return false;
-  }
-  return true;
-}
 
 function ensureAddonConfigured() {
   if (!ADDON_BASE_URL) {
@@ -2905,7 +2831,7 @@ async function streamHandler(req, res) {
       const qualityLabel = rawQualityLabel && String(rawQualityLabel).toLowerCase() !== String(detectedResolutionToken || '').toLowerCase()
         ? rawQualityLabel
         : null;
-      const featureBadges = extractQualityFeatureBadges(result.title || '');
+      const featureBadges = extractQualityFeatureBadges(result.title || '', QUALITY_FEATURE_PATTERNS);
       const qualityParts = [];
       if (resolutionBadge) qualityParts.push(resolutionBadge);
       if (qualityLabel) qualityParts.push(qualityLabel);
