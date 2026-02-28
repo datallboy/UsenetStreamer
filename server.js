@@ -3413,6 +3413,9 @@ const streamDeps = {
   handlers: {
     legacyStreamHandler: streamHandler,
   },
+  runtime: {
+    specialCatalogPrefixes: specialMetadata.specialCatalogPrefixes,
+  },
 };
 const streamHandlerV2 = createGetStreamsUseCase(streamDeps);
 const delegatedStreamHandler = async (req, res) => {
