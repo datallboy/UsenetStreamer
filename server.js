@@ -51,21 +51,20 @@ const tmdbService = require('./src/services/tmdb');
 /** @type {import('./src/types').TvdbClient} */
 const tvdbService = require('./src/services/tvdb');
 const { createGetStreamsUseCase } = require('./src/services/stream/getStreamsUseCase');
-const { registerStreamRoutes } = require('./src/routes/stream/registerStreamRoutes');
-const { registerAddonRoutes } = require('./src/routes/addon/registerAddonRoutes');
-const { registerDownloadRoutes } = require('./src/routes/addon/registerDownloadRoutes');
 const { createManifestHandler } = require('./src/controllers/addon/manifestController');
 const { createCatalogHandler } = require('./src/controllers/addon/catalogController');
 const { createMetaHandler } = require('./src/controllers/addon/metaController');
 const { createEasynewsNzbHandler } = require('./src/controllers/addon/easynewsNzbController');
 const { createNzbdavStreamHandler } = require('./src/controllers/addon/nzbdavStreamController');
 const catalogMetaService = require('./src/services/addon/catalogMetaService');
+const { registerCoreRoutes } = require('./src/app/registerCoreRoutes');
+const { registerFeatureRoutes } = require('./src/app/registerFeatureRoutes');
+const { createHttpServerLifecycle } = require('./src/app/httpServerLifecycle');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
 const ADDON_VERSION = '1.7.3';
 const DEFAULT_ADDON_NAME = 'UsenetStreamer';
-let serverInstance = null;
 const SERVER_HOST = '0.0.0.0';
 const DEDUPE_MAX_PUBLISH_DIFF_DAYS = 14;
 let PAID_INDEXER_TOKENS = new Set();
@@ -142,11 +141,9 @@ function extractQualityFeatureBadges(title) {
 }
 
 app.use(cors());
-app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 const adminApiRouter = express.Router();
 adminApiRouter.use(express.json({ limit: '1mb' }));
-const adminStatic = express.static(path.join(__dirname, 'admin'));
 
 adminApiRouter.get(
   '/config',
@@ -360,29 +357,11 @@ adminApiRouter.post('/test-connections',
   }
 });
 
-app.use('/admin/api', (req, res, next) => ensureSharedSecret(req, res, next), adminApiRouter);
-app.use('/admin', adminStatic);
-app.use('/:token/admin', (req, res, next) => {
-  ensureSharedSecret(req, res, (err) => {
-    if (err) return;
-    adminStatic(req, res, next);
-  });
-});
-
-app.get('/', (req, res) => {
-  res.redirect('/admin');
-});
-
-// Serve shared utilities to frontend
-app.get('/utils/templateEngine.js', (req, res) => {
-  res.sendFile(path.join(__dirname, 'src/utils/templateEngine.js'));
-});
-
-app.use((req, res, next) => {
-  if (req.path.startsWith('/assets/')) return next();
-  if (req.path.startsWith('/admin') && !req.path.startsWith('/admin/api')) return next();
-  if (/^\/[^/]+\/admin/.test(req.path) && !/^\/[^/]+\/admin\/api/.test(req.path)) return next();
-  return ensureSharedSecret(req, res, next);
+registerCoreRoutes({
+  app,
+  rootDir: __dirname,
+  ensureSharedSecret,
+  adminApiRouter,
 });
 
 // Additional authentication middleware is registered after admin routes are defined
@@ -1234,12 +1213,6 @@ const metaHandler = createMetaHandler({
   getState: getAddonRouteState,
   nzbdavService,
   catalogMetaService,
-});
-
-registerAddonRoutes(app, {
-  manifestHandler,
-  catalogHandler,
-  metaHandler,
 });
 
 /**
@@ -3523,7 +3496,6 @@ const delegatedStreamHandler = async (req, res) => {
   return streamHandler(req, res);
 };
 
-registerStreamRoutes(app, delegatedStreamHandler);
 const easynewsNzbHandler = createEasynewsNzbHandler({
   easynewsService,
   getStreamingMode: () => STREAMING_MODE,
@@ -3542,40 +3514,23 @@ const nzbdavStreamHandler = createNzbdavStreamHandler({
   },
 });
 
-registerDownloadRoutes(app, {
+registerFeatureRoutes({
+  app,
+  manifestHandler,
+  catalogHandler,
+  metaHandler,
+  streamHandler: delegatedStreamHandler,
   nzbdavStreamHandler,
   easynewsNzbHandler,
 });
-
-function startHttpServer() {
-  if (serverInstance) {
-    return serverInstance;
-  }
-  serverInstance = app.listen(currentPort, SERVER_HOST, () => {
-    console.log(`Addon running at http://${SERVER_HOST}:${currentPort}`);
-  });
-  serverInstance.on('close', () => {
-    serverInstance = null;
-  });
-  return serverInstance;
-}
-
-async function restartHttpServer() {
-  if (!serverInstance) {
-    startHttpServer();
-    return;
-  }
-  await new Promise((resolve, reject) => {
-    serverInstance.close((err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
-  startHttpServer();
-}
+const { startHttpServer, restartHttpServer } = createHttpServerLifecycle({
+  app,
+  host: SERVER_HOST,
+  getPort: () => currentPort,
+  onListen: ({ host, port }) => {
+    console.log(`Addon running at http://${host}:${port}`);
+  },
+});
 
 startHttpServer();
 

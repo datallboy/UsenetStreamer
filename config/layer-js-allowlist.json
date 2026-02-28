@@ -1,5 +1,8 @@
 {
   "allowlist": [
+    "src/app/httpServerLifecycle.js",
+    "src/app/registerCoreRoutes.js",
+    "src/app/registerFeatureRoutes.js",
     "src/controllers/addon/catalogController.js",
     "src/controllers/addon/easynewsNzbController.js",
     "src/controllers/addon/manifestController.js",
