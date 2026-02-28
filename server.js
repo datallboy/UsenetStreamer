@@ -52,6 +52,11 @@ const tmdbService = require('./src/services/tmdb');
 const tvdbService = require('./src/services/tvdb');
 const { createGetStreamsUseCase } = require('./src/services/stream/getStreamsUseCase');
 const { registerStreamRoutes } = require('./src/routes/stream/registerStreamRoutes');
+const { registerAddonRoutes } = require('./src/routes/addon/registerAddonRoutes');
+const { createManifestHandler } = require('./src/controllers/addon/manifestController');
+const { createCatalogHandler } = require('./src/controllers/addon/catalogController');
+const { createMetaHandler } = require('./src/controllers/addon/metaController');
+const catalogMetaService = require('./src/services/addon/catalogMetaService');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
@@ -1199,151 +1204,39 @@ function ensureAddonConfigured() {
     throw new Error('ADDON_BASE_URL is not configured');
   }
 }
-
-// Manifest endpoint
-/**
- * @param {import('./src/types').ManifestHandlerRequest} req
- * @param {import('./src/types').ManifestHandlerResponse} res
- */
-function manifestHandler(req, res) {
-  ensureAddonConfigured();
-
-  const description = STREAMING_MODE === 'native'
-    ? 'Native Usenet streaming for Stremio v5 (Windows) - NZB sources via direct Newznab indexers'
-    : 'Usenet-powered instant streams for Stremio via Prowlarr/NZBHydra and NZBDav';
-
-  const catalogs = [];
-  const resources = ['stream'];
-  const idPrefixes = ['tt', 'tvdb', 'tmdb', 'pt', specialMetadata.SPECIAL_ID_PREFIX];
-  if (STREAMING_MODE !== 'native' && NZBDAV_HISTORY_CATALOG_LIMIT > 0) {
-    const catalogName = ADDON_NAME || DEFAULT_ADDON_NAME;
-    catalogs.push(
-      { type: 'movie', id: 'nzbdav_completed', name: catalogName, pageSize: 20, extra: [{ name: 'skip' }] },
-      { type: 'series', id: 'nzbdav_completed', name: catalogName, pageSize: 20, extra: [{ name: 'skip' }] }
-    );
-    resources.push('catalog', 'meta');
-    idPrefixes.push('nzbdav');
-  }
-
-  res.json({
-    id: STREAMING_MODE === 'native' ? 'com.usenet.streamer.native' : 'com.usenet.streamer',
-    version: ADDON_VERSION,
-    name: ADDON_NAME,
-    description,
-    logo: `${ADDON_BASE_URL.replace(/\/$/, '')}/assets/icon.png`,
-    resources,
-    types: ['movie', 'series', 'channel', 'tv'],
-    catalogs,
-    idPrefixes
-  });
+function getAddonRouteState() {
+  return {
+    streamingMode: STREAMING_MODE,
+    historyCatalogLimit: NZBDAV_HISTORY_CATALOG_LIMIT,
+    addonName: ADDON_NAME,
+    addonVersion: ADDON_VERSION,
+    addonBaseUrl: ADDON_BASE_URL,
+    defaultAddonName: DEFAULT_ADDON_NAME,
+    specialIdPrefix: specialMetadata.SPECIAL_ID_PREFIX,
+  };
 }
 
-['/manifest.json', '/:token/manifest.json'].forEach((route) => {
-  app.get(route, manifestHandler);
+const manifestHandler = createManifestHandler({
+  ensureAddonConfigured,
+  getState: getAddonRouteState,
 });
 
-/**
- * @param {import('./src/types').CatalogHandlerRequest} req
- * @param {import('./src/types').CatalogHandlerResponse} res
- */
-async function catalogHandler(req, res) {
-  if (STREAMING_MODE === 'native' || NZBDAV_HISTORY_CATALOG_LIMIT <= 0) {
-    res.status(404).json({ metas: [] });
-    return;
-  }
-
-  const { type, id } = req.params;
-  if (id !== 'nzbdav_completed') {
-    res.status(404).json({ metas: [] });
-    return;
-  }
-
-  try {
-    nzbdavService.ensureNzbdavConfigured();
-  } catch (error) {
-    res.status(500).json({ metas: [], error: error.message });
-    return;
-  }
-
-  const skip = Math.max(0, parseInt(req.query.skip || '0', 10) || 0);
-  const limit = Math.max(0, Math.min(200, NZBDAV_HISTORY_CATALOG_LIMIT));
-  if (limit === 0) {
-    res.json({ metas: [] });
-    return;
-  }
-
-  const categoryForType = nzbdavService.getNzbdavCategory(type);
-  const historyMap = await nzbdavService.fetchCompletedNzbdavHistory([categoryForType], limit + skip);
-  const entries = Array.from(historyMap.values());
-  const slice = entries.slice(skip, skip + limit);
-  const poster = `${ADDON_BASE_URL.replace(/\/$/, '')}/assets/icon.png`;
-
-  const metas = slice.map((entry) => {
-    const name = entry.jobName || 'NZBDav Completed';
-    return {
-      id: `nzbdav:${entry.nzoId}`,
-      type,
-      name,
-      poster,
-    };
-  });
-
-  res.json({ metas });
-}
-
-['/catalog/:type/:id.json', '/:token/catalog/:type/:id.json'].forEach((route) => {
-  app.get(route, catalogHandler);
+const catalogHandler = createCatalogHandler({
+  getState: getAddonRouteState,
+  nzbdavService,
+  catalogMetaService,
 });
 
-/**
- * @param {import('./src/types').MetaHandlerRequest} req
- * @param {import('./src/types').MetaHandlerResponse} res
- */
-async function metaHandler(req, res) {
-  if (STREAMING_MODE === 'native' || NZBDAV_HISTORY_CATALOG_LIMIT <= 0) {
-    res.status(404).json({ meta: null });
-    return;
-  }
-  const { type, id } = req.params;
-  if (!id || !id.startsWith('nzbdav:')) {
-    res.status(404).json({ meta: null });
-    return;
-  }
+const metaHandler = createMetaHandler({
+  getState: getAddonRouteState,
+  nzbdavService,
+  catalogMetaService,
+});
 
-  try {
-    nzbdavService.ensureNzbdavConfigured();
-  } catch (error) {
-    res.status(500).json({ meta: null, error: error.message });
-    return;
-  }
-
-  const nzoId = id.slice('nzbdav:'.length).trim();
-  if (!nzoId) {
-    res.status(404).json({ meta: null });
-    return;
-  }
-
-  const categoryForType = nzbdavService.getNzbdavCategory(type);
-  const historyMap = await nzbdavService.fetchCompletedNzbdavHistory([categoryForType], Math.max(50, NZBDAV_HISTORY_CATALOG_LIMIT));
-  const match = Array.from(historyMap.values()).find((entry) => String(entry.nzoId) === String(nzoId));
-  if (!match) {
-    res.status(404).json({ meta: null });
-    return;
-  }
-
-  const poster = `${ADDON_BASE_URL.replace(/\/$/, '')}/assets/icon.png`;
-  res.json({
-    meta: {
-      id: `nzbdav:${match.nzoId}`,
-      type,
-      name: match.jobName || 'NZBDav Completed',
-      poster,
-    }
-  });
-}
-
-['/meta/:type/:id.json', '/:token/meta/:type/:id.json'].forEach((route) => {
-  app.get(route, metaHandler);
+registerAddonRoutes(app, {
+  manifestHandler,
+  catalogHandler,
+  metaHandler,
 });
 
 /**
