@@ -1,8 +1,11 @@
 {
   "allowlist": [
     "src/controllers/addon/catalogController.js",
+    "src/controllers/addon/easynewsNzbController.js",
     "src/controllers/addon/manifestController.js",
     "src/controllers/addon/metaController.js",
+    "src/controllers/addon/nzbdavStreamController.js",
+    "src/routes/addon/registerDownloadRoutes.js",
     "src/routes/addon/registerAddonRoutes.js",
     "src/routes/stream/registerStreamRoutes.js",
     "src/services/addon/catalogMetaService.js",
