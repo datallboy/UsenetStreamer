@@ -18,6 +18,7 @@
     "check:layer-js": "node scripts/check-layer-js-allowlist.js",
     "check:layers": "node scripts/check-layer-boundaries.js",
     "test:stream-same-output": "node --test tests/stream-same-output/getStreamsUseCase.same-output.test.js",
+    "test:stream-components": "node --test tests/stream-components/*.test.js",
     "docs:jsdoc:clean": "node -e \"require('node:fs').rmSync('docs/jsdoc', { recursive: true, force: true })\"",
     "docs:jsdoc": "npm run docs:jsdoc:clean && jsdoc -c jsdoc.json"
   },
