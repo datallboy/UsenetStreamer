@@ -96,7 +96,7 @@ References:
 39. `V2-070` - Split stream use-case internals
    Objective: Break stream flow into request parsing, id resolution, search planning, ranking, output building components.
 40. `V2-122` - Extract stream HTTP controller from server.js
-   Objective: Move request/response handling for stream endpoints from `server.js` into `src/controllers/stream/*` and keep routing thin.
+   Objective: Move stream endpoint HTTP entry wiring from `server.js` into `src/controllers/stream/*` and keep routing thin (full legacy stream body extraction deferred to `V2-056`).
 41. `V2-123` - Extract stream domain rules to domain layer
    Objective: Move pure stream rules (ID normalization/search matching/ranking helpers) into `src/domain/stream/*` with side-effect-free tests.
 42. `V2-124` - Extract stream integration adapters
@@ -108,7 +108,7 @@ References:
 45. `V2-129` - Add admin extraction parity tests
    Objective: Add fixture/smoke checks for admin config and connection-test endpoints after extraction to confirm unchanged behavior.
 46. `V2-125` - Complete stream layered cutover behind feature flag
-   Objective: Wire `routes -> controllers -> services -> domain -> integrations` stream path behind `STREAM_V2_ENABLED` with parity and staged validation (full physical removal of remaining legacy stream handler body is deferred to `V2-056`).
+   Objective: Wire `routes -> controllers -> services -> domain -> integrations` stream path behind `STREAM_V2_ENABLED` with parity and staged validation, allowing compatibility pipeline bridging until full physical legacy stream body removal in `V2-056`.
 47. `V2-036` - Run stream staging trial run
    Objective: Enable stream v2 in staging and monitor latency/error rates after M2 extraction tasks are complete.
 48. `V2-GATE-M2` - M2 gate - server/admin/stream split work stable

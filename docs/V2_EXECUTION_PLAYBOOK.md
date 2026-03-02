@@ -113,7 +113,7 @@ Process (risk order):
 2. Extract admin route registration + admin controllers from `server.js` (`V2-126..128`).
 3. Keep addon extraction slices in routes/controllers (`V2-037`, `V2-038`).
 4. Keep bootstrap/route composition extraction (`V2-039`) and helper extraction (`V2-047`).
-5. Split stream internals and layered stream path (`V2-070`, `V2-122..125`, `V2-071`).
+5. Split stream internals and layered stream path (`V2-070`, `V2-122..125`, `V2-071`) using compatibility pipeline bridging where required; full physical removal of remaining legacy stream handler body is deferred to `V2-056`.
 6. Run parity tests for stream/admin and staged validation (`V2-035`, `V2-129`, `V2-036`).
 7. Close gate only after rollback evidence (`V2-GATE-M2`).
 

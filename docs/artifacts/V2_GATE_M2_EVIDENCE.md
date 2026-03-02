@@ -55,6 +55,7 @@ Executed on `v2`:
 - Stream cutover remains behind `STREAM_V2_ENABLED` (`V2-034`, `V2-125`).
 - Admin and stream parity checks are in place (`V2-035`, `V2-129`).
 - Staging side-by-side trial evidence committed (`V2-036` -> `d70d712`).
+- Physical extraction/removal of the remaining legacy `streamHandler` body from `server.js` is explicitly deferred to `V2-056` (M4 scope).
 
 ## Gate Decision
 
