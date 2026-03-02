@@ -61,6 +61,7 @@ const { createEasynewsNzbHandler } = require('./src/controllers/addon/easynewsNz
 const { createNzbdavStreamHandler } = require('./src/controllers/addon/nzbdavStreamController');
 const { createAdminConfigGetHandler, createAdminConfigSaveHandler } = require('./src/controllers/admin/configController');
 const { createAdminConnectionTestHandler } = require('./src/controllers/admin/connectionTestController');
+const { createStreamHandler } = require('./src/controllers/stream/streamController');
 const catalogMetaService = require('./src/services/addon/catalogMetaService');
 const { registerCoreRoutes } = require('./src/app/registerCoreRoutes');
 const { registerFeatureRoutes } = require('./src/app/registerFeatureRoutes');
@@ -3246,12 +3247,11 @@ const streamDeps = {
   },
 };
 const streamHandlerV2 = createGetStreamsUseCase(streamDeps);
-const delegatedStreamHandler = async (req, res) => {
-  if (STREAM_V2_ENABLED) {
-    return streamHandlerV2(req, res);
-  }
-  return streamHandler(req, res);
-};
+const delegatedStreamHandler = createStreamHandler({
+  getStreamV2Enabled: () => STREAM_V2_ENABLED,
+  streamHandlerV2,
+  legacyStreamHandler: streamHandler,
+});
 
 const easynewsNzbHandler = createEasynewsNzbHandler({
   easynewsService,
