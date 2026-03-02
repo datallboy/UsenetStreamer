@@ -59,6 +59,7 @@ const { createCatalogHandler } = require('./src/controllers/addon/catalogControl
 const { createMetaHandler } = require('./src/controllers/addon/metaController');
 const { createEasynewsNzbHandler } = require('./src/controllers/addon/easynewsNzbController');
 const { createNzbdavStreamHandler } = require('./src/controllers/addon/nzbdavStreamController');
+const { createAdminConfigGetHandler, createAdminConfigSaveHandler } = require('./src/controllers/admin/configController');
 const catalogMetaService = require('./src/services/addon/catalogMetaService');
 const { registerCoreRoutes } = require('./src/app/registerCoreRoutes');
 const { registerFeatureRoutes } = require('./src/app/registerFeatureRoutes');
@@ -126,160 +127,32 @@ app.use(cors());
 const adminApiRouter = express.Router();
 adminApiRouter.use(express.json({ limit: '1mb' }));
 
-adminApiRouter.get(
-  '/config',
-  /**
-   * @param {import('./src/types').AdminConfigGetRequest} req
-   * @param {import('./src/types').AdminConfigGetHandlerResponse} res
-   */
-  (req, res) => {
-    const values = collectConfigValues(ADMIN_CONFIG_KEYS);
-    if (!values.NZB_MAX_RESULT_SIZE_GB) {
-      values.NZB_MAX_RESULT_SIZE_GB = String(DEFAULT_MAX_RESULT_SIZE_GB);
-    }
-    if (!values.TMDB_SEARCH_MODE) {
-      values.TMDB_SEARCH_MODE = 'english_only';
-    }
-    res.json({
-      values,
-      manifestUrl: computeManifestUrl(),
-      runtimeEnvPath: runtimeEnv.RUNTIME_ENV_FILE,
-      debugNewznabSearch: isNewznabDebugEnabled(),
-      newznabPresets: newznabService.getAvailableNewznabPresets(),
-      addonVersion: ADDON_VERSION,
-    });
-  }
-);
+adminApiRouter.get('/config', createAdminConfigGetHandler({
+  collectConfigValues,
+  getAdminConfigKeys: () => ADMIN_CONFIG_KEYS,
+  getDefaultMaxResultSizeGb: () => DEFAULT_MAX_RESULT_SIZE_GB,
+  computeManifestUrl,
+  runtimeEnv,
+  isNewznabDebugEnabled,
+  newznabService,
+  getAddonVersion: () => ADDON_VERSION,
+}));
 
-adminApiRouter.post('/config',
-  /**
-   * @param {import('./src/types').AdminConfigSaveRequest} req
-   * @param {import('./src/types').AdminConfigSaveHandlerResponse} res
-   */
-  async (req, res) => {
-  const payload = req.body || {};
-  const incoming = payload.values;
-  if (!incoming || typeof incoming !== 'object') {
-    res.status(400).json({ error: 'Invalid payload: expected "values" object' });
-    return;
-  }
-
-  // Debug: log TMDb related keys
-  console.log('[ADMIN] Received TMDb config:', {
-    TMDB_ENABLED: incoming.TMDB_ENABLED,
-    TMDB_API_KEY: incoming.TMDB_API_KEY ? `(${incoming.TMDB_API_KEY.length} chars)` : '(empty)',
-    TMDB_SEARCH_LANGUAGES: incoming.TMDB_SEARCH_LANGUAGES,
-    TMDB_SEARCH_MODE: incoming.TMDB_SEARCH_MODE,
-  });
-
-  const updates = {};
-  const numberedKeySet = new Set(NEWZNAB_NUMBERED_KEYS);
-  NEWZNAB_NUMBERED_KEYS.forEach((key) => {
-    updates[key] = null;
-  });
-
-  // Debug: ensure ADMIN_CONFIG_KEYS contains TMDb keys
-  if (!ADMIN_CONFIG_KEYS.includes('TMDB_API_KEY')) {
-    console.error('[ADMIN] TMDB_API_KEY missing from ADMIN_CONFIG_KEYS');
-  }
-  if (!ADMIN_CONFIG_KEYS.includes('TMDB_ENABLED')) {
-    console.error('[ADMIN] TMDB_ENABLED missing from ADMIN_CONFIG_KEYS');
-  }
-  if (!ADMIN_CONFIG_KEYS.includes('TMDB_SEARCH_LANGUAGES')) {
-    console.error('[ADMIN] TMDB_SEARCH_LANGUAGES missing from ADMIN_CONFIG_KEYS');
-  }
-  if (!ADMIN_CONFIG_KEYS.includes('TMDB_SEARCH_MODE')) {
-    console.error('[ADMIN] TMDB_SEARCH_MODE missing from ADMIN_CONFIG_KEYS');
-  }
-  const tmdbKeysInAdminConfig = ADMIN_CONFIG_KEYS.filter((k) => k.startsWith('TMDB_'));
-  console.log('[ADMIN] TMDb keys in ADMIN_CONFIG_KEYS:', tmdbKeysInAdminConfig);
-  console.log('[ADMIN] ADMIN_CONFIG_KEYS length:', ADMIN_CONFIG_KEYS.length);
-
-  ADMIN_CONFIG_KEYS.forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(incoming, key)) {
-      const value = incoming[key];
-      if (numberedKeySet.has(key)) {
-        const trimmed = typeof value === 'string' ? value.trim() : value;
-        if (trimmed === '' || trimmed === null || trimmed === undefined) {
-          updates[key] = null;
-        } else if (typeof value === 'boolean') {
-          updates[key] = value ? 'true' : 'false';
-        } else {
-          updates[key] = String(value);
-        }
-        return;
-      }
-      if (value === null || value === undefined) {
-        updates[key] = '';
-      } else if (typeof value === 'boolean') {
-        updates[key] = value ? 'true' : 'false';
-      } else {
-        updates[key] = String(value);
-      }
-    }
-  });
-
-  // Safety: explicitly persist TMDb keys even if ADMIN_CONFIG_KEYS filtering breaks
-  if (Object.prototype.hasOwnProperty.call(incoming, 'TMDB_API_KEY')) {
-    updates.TMDB_API_KEY = incoming.TMDB_API_KEY ? String(incoming.TMDB_API_KEY) : '';
-  }
-  if (Object.prototype.hasOwnProperty.call(incoming, 'TMDB_ENABLED')) {
-    updates.TMDB_ENABLED = incoming.TMDB_ENABLED ? String(incoming.TMDB_ENABLED) : 'false';
-  }
-  if (Object.prototype.hasOwnProperty.call(incoming, 'TMDB_SEARCH_LANGUAGES')) {
-    updates.TMDB_SEARCH_LANGUAGES = incoming.TMDB_SEARCH_LANGUAGES ? String(incoming.TMDB_SEARCH_LANGUAGES) : '';
-  }
-  if (Object.prototype.hasOwnProperty.call(incoming, 'TMDB_SEARCH_MODE')) {
-    updates.TMDB_SEARCH_MODE = incoming.TMDB_SEARCH_MODE ? String(incoming.TMDB_SEARCH_MODE) : '';
-  }
-
-  // Debug: log what we're about to save
-  console.log('[ADMIN] TMDb updates to save:', {
-    TMDB_ENABLED: updates.TMDB_ENABLED,
-    TMDB_API_KEY: updates.TMDB_API_KEY ? `(${updates.TMDB_API_KEY.length} chars)` : '(not in updates)',
-    TMDB_SEARCH_LANGUAGES: updates.TMDB_SEARCH_LANGUAGES,
-    TMDB_SEARCH_MODE: updates.TMDB_SEARCH_MODE,
-  });
-
-  try {
-    runtimeEnv.updateRuntimeEnv(updates);
-    runtimeEnv.applyRuntimeEnv();
-
-    const newznabConfigsForCaps = newznabService.getNewznabConfigsFromValues(incoming, { includeEmpty: false });
-    try {
-      const capsCache = await newznabService.refreshCapsCache(newznabConfigsForCaps, { timeoutMs: 12000 });
-      console.log('[NEWZNAB][CAPS] Saved caps cache', capsCache);
-      runtimeEnv.updateRuntimeEnv({
-        NEWZNAB_CAPS_CACHE: Object.keys(capsCache).length > 0 ? JSON.stringify(capsCache) : ''
-      });
-      runtimeEnv.applyRuntimeEnv();
-    } catch (capsError) {
-      console.warn('[NEWZNAB][CAPS] Failed to refresh caps cache (config saved anyway)', capsError?.message || capsError);
-    }
-
-    // Debug: check process.env after apply
-    console.log('[ADMIN] process.env.TMDB_API_KEY after apply:', process.env.TMDB_API_KEY ? `(${process.env.TMDB_API_KEY.length} chars)` : '(empty)');
-
-    indexerService.reloadConfig();
-    nzbdavService.reloadConfig();
-    tmdbService.reloadConfig();
-    tvdbService.reloadConfig();
-    if (typeof cache.reloadNzbdavCacheConfig === 'function') {
-      cache.reloadNzbdavCacheConfig();
-    }
-    cache.clearAllCaches('admin-config-save');
-    const { portChanged } = rebuildRuntimeConfig();
-    if (portChanged) {
-      await restartHttpServer();
-    } else {
-      startHttpServer();
-    }
-    res.json({ success: true, manifestUrl: computeManifestUrl(), hotReloaded: true, portChanged });
-  } catch (error) {
-    console.error('[ADMIN] Failed to update configuration', error);
-    res.status(500).json({ error: 'Failed to persist configuration changes' });
-  }
-});
+adminApiRouter.post('/config', createAdminConfigSaveHandler({
+  getAdminConfigKeys: () => ADMIN_CONFIG_KEYS,
+  getNewznabNumberedKeys: () => NEWZNAB_NUMBERED_KEYS,
+  runtimeEnv,
+  newznabService,
+  indexerService,
+  nzbdavService,
+  tmdbService,
+  tvdbService,
+  cache,
+  rebuildRuntimeConfig,
+  restartHttpServer: () => restartHttpServer(),
+  startHttpServer: () => startHttpServer(),
+  computeManifestUrl,
+}));
 
 adminApiRouter.post('/test-connections',
   /**
