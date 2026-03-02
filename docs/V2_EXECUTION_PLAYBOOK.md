@@ -118,9 +118,10 @@ Process (risk order):
 7. Close gate only after rollback evidence (`V2-GATE-M2`).
 
 Done when:
-1. `server.js` no longer owns admin or stream handler bodies.
+1. `server.js` no longer owns admin handler bodies, and stream requests enter layered modules behind `STREAM_V2_ENABLED`.
 2. Stream path runs through `routes -> controllers -> services -> domain -> integrations` behind `STREAM_V2_ENABLED`.
 3. Admin and stream parity checks plus staging trial pass.
+4. Physical extraction/removal of the remaining legacy stream handler body from `server.js` is tracked explicitly in `V2-056` (M4), not required for M2 gate closure.
 
 ## Step D - Triage Path Migration (M3)
 Tasks: `V2-040..046`, `V2-072..078`, `V2-104`, `V2-GATE-M3`
@@ -149,7 +150,7 @@ Implementation groups:
 1. App/config/logging/middleware skeleton (`V2-050`, `V2-051`, `V2-109..114`).
 2. Hot-reload/runtime config hardening (`V2-052..055`, `V2-095`, `V2-115..118`, `V2-120`, `V2-121`).
 3. Full service decomposition (`V2-079..085`, `V2-090..093`, `V2-096..097`).
-4. Final `server.js` composition-only target + guard (`V2-056`, `V2-057`).
+4. Final `server.js` composition-only target + guard (`V2-056`, `V2-057`), including physical removal of any remaining legacy stream handler body.
 
 Done when:
 1. Runtime hot-reload behavior is preserved and tested.

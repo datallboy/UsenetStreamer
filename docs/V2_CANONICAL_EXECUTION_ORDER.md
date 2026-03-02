@@ -108,11 +108,11 @@ References:
 45. `V2-129` - Add admin extraction parity tests
    Objective: Add fixture/smoke checks for admin config and connection-test endpoints after extraction to confirm unchanged behavior.
 46. `V2-125` - Complete stream layered cutover behind feature flag
-   Objective: Wire `routes -> controllers -> services -> domain -> integrations` stream path behind `STREAM_V2_ENABLED` with parity and staged validation.
+   Objective: Wire `routes -> controllers -> services -> domain -> integrations` stream path behind `STREAM_V2_ENABLED` with parity and staged validation (full physical removal of remaining legacy stream handler body is deferred to `V2-056`).
 47. `V2-036` - Run stream staging trial run
    Objective: Enable stream v2 in staging and monitor latency/error rates after M2 extraction tasks are complete.
 48. `V2-GATE-M2` - M2 gate - server/admin/stream split work stable
-   Objective: Close only when admin+stream controller/domain/integration extraction, same output checks, and staging trial run checks pass.
+   Objective: Close only when admin+stream controller/domain/integration extraction, same output checks, and staging trial run checks pass; full physical legacy stream handler body extraction is tracked in `V2-056`.
 
 ## M3
 
@@ -164,7 +164,7 @@ References:
 70. `V2-055` - Add reload decision logging
    Objective: Log why a config change triggers restart vs hot reload.
 71. `V2-056` - Reduce server.js to composition-only
-   Objective: Reach target server.js <= 300 lines with no business logic handlers.
+   Objective: Reach target server.js <= 300 lines with no business logic handlers, explicitly extracting/removing any remaining legacy stream handler body from `server.js`.
 72. `V2-057` - Add large single file guard CI check
    Objective: Fail CI if server.js grows beyond threshold or reintroduces handler bodies.
 73. `V2-079` - Split newznab service
@@ -290,4 +290,3 @@ Run these before closing any milestone gate:
 ## Gate Revalidation Note
 
 If scope changes after a gate commit was recorded, re-open that gate task and re-run validation evidence before closing it again.
-

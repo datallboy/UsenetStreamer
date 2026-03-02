@@ -275,13 +275,13 @@ Total range: **23-24 weeks**.
 1. Proposal: `docs/V2_PROJECT_PROPOSAL.md`
 2. Task source-of-truth: `docs/v2_github_project_tasks.csv`
 3. Canonical ordered checklist: `docs/V2_CANONICAL_EXECUTION_ORDER.md`
-4. Issue import file: `docs/v2_issues_import.csv`
-5. Optional issue import helper: `scripts/import_v2_issues.sh`
+4. Server extraction map: `docs/v2-server-extraction-inventory.md`
+5. Gate evidence artifacts under `docs/artifacts/*`
 
 ## 10) Immediate Next Steps
-1. Re-import refreshed issues from `docs/v2_issues_import.csv`.
-2. Re-open `V2-GATE-M2` after scope update and revalidate evidence before closing again.
-3. Execute tasks in canonical row order from `docs/V2_CANONICAL_EXECUTION_ORDER.md`.
+1. Execute tasks in canonical row order from `docs/V2_CANONICAL_EXECUTION_ORDER.md`.
+2. Keep M2 scope explicit: layered stream path behind `STREAM_V2_ENABLED` + parity/staging checks.
+3. Treat physical extraction/removal of remaining legacy stream handler body as `V2-056` (M4) scope.
 4. Enforce milestone gates strictly to preserve production safety.
 
 <!-- TASK_ID_APPENDIX_START -->

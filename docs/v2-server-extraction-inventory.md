@@ -49,6 +49,7 @@ The risk order above is implemented in M2 CSV row order via:
 - `V2-123`: Extract pure stream decision logic to `src/domain/stream/*`.
 - `V2-124`: Extract stream external-call adapters to `src/integrations/stream/*`.
 - `V2-125`: Wire end-to-end layered stream path behind `STREAM_V2_ENABLED` and verify parity + rollback drill.
+- `V2-056` (M4): Physically extract/remove any remaining legacy stream handler body/business logic from `server.js` so file is composition-only.
 
 ## Admin Extraction Tracking (M2)
 
