@@ -67,6 +67,7 @@ const { registerCoreRoutes } = require('./src/app/registerCoreRoutes');
 const { registerFeatureRoutes } = require('./src/app/registerFeatureRoutes');
 const { createHttpServerLifecycle } = require('./src/app/httpServerLifecycle');
 const { createStreamIntegrations } = require('./src/integrations/stream/createStreamIntegrations');
+const { createLegacyStreamPipelineAdapter } = require('./src/integrations/stream/createLegacyStreamPipelineAdapter');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
@@ -3251,6 +3252,11 @@ async function streamHandler(req, res) {
 const streamDeps = {
   handlers: {
     legacyStreamHandler: streamHandler,
+  },
+  integrations: {
+    pipeline: createLegacyStreamPipelineAdapter({
+      legacyStreamHandler: streamHandler,
+    }),
   },
   runtime: {
     specialCatalogPrefixes: specialMetadata.specialCatalogPrefixes,

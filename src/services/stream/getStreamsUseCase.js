@@ -12,9 +12,13 @@ function createGetStreamsUseCase(deps) {
   if (!deps || typeof deps !== 'object') {
     throw new Error('StreamDeps object is required');
   }
-  const handler = deps.handlers && deps.handlers.legacyStreamHandler;
-  if (typeof handler !== 'function') {
+  const legacyHandler = deps.handlers && deps.handlers.legacyStreamHandler;
+  if (typeof legacyHandler !== 'function') {
     throw new Error('StreamDeps.handlers.legacyStreamHandler must be a function');
+  }
+  const pipelineExecutor = deps.integrations?.pipeline?.execute || legacyHandler;
+  if (typeof pipelineExecutor !== 'function') {
+    throw new Error('Stream pipeline executor must be a function');
   }
 
   const components = deps.components || {};
@@ -56,7 +60,7 @@ function createGetStreamsUseCase(deps) {
       response,
     };
 
-    return handler(req, res);
+    return pipelineExecutor(req, res);
   };
 }
 
