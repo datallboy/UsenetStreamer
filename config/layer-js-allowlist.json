@@ -8,6 +8,7 @@
     "src/controllers/addon/manifestController.js",
     "src/controllers/addon/metaController.js",
     "src/controllers/addon/nzbdavStreamController.js",
+    "src/controllers/admin/connectionTestController.js",
     "src/controllers/admin/configController.js",
     "src/routes/addon/registerDownloadRoutes.js",
     "src/routes/admin/registerAdminRoutes.js",
