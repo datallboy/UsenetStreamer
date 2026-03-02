@@ -12,13 +12,13 @@ Map major `server.js` sections to target layers so extraction work can happen in
 |---|---|---|---|
 | `1-73` | Process bootstrap, imports, service wiring | `src/app/compositionRoot.ts` | Move all service construction/import wiring into composition root; keep startup side-effects isolated. |
 | `74-138` | Shared helper utilities and prefetch cache lifecycle | `src/services/stream/prefetch/*` + `src/domain/stream/*` | Keep pure helpers in `domain`; keep mutable prefetch map in service layer. |
-| `139-354` | Admin API handlers (`/admin/api/config`, `/admin/api/test-connections`) | `src/routes/adminRoutes.ts` + `src/controllers/admin/*` + `src/services/config/*` | Split request parsing from config persistence and connection-test orchestration. |
+| `139-354` | Admin API handlers (`/admin/api/config`, `/admin/api/test-connections`) | `src/routes/adminRoutes.ts` + `src/controllers/admin/*` + `src/services/config/*` | Split request parsing from config persistence and connection-test orchestration; track with `V2-126..V2-129`. |
 | `355-383` | Admin/static/auth middleware registration | `src/app/registerRoutes.ts` + `src/app/http/middleware/*` | Compose middleware order centrally; avoid inline auth wrappers in `server.js`. |
 | `384-745` | Runtime snapshot variables, sorting/triage/indexer state holders, support functions | `src/app/config/runtimeSnapshot.ts` + `src/app/config/configService.ts` | Replace many top-level mutable vars with typed config service + immutable request snapshots. |
 | `746-941` | `rebuildRuntimeConfig`, runtime refresh side-effects, ADMIN config keys | `src/app/config/configService.ts` | Keep one hot-reload apply path; expose typed read/apply methods used by controllers. |
 | `942-1196` | Query override parsing, indexer/newznab orchestration helpers, stream cache key helpers | `src/services/stream/query/*` + `src/services/stream/search/*` + `src/domain/stream/*` | Keep network orchestration in services; move pure key/build logic into domain utilities. |
 | `1208-1351` | Addon handlers: manifest, catalog, meta | `src/routes/addonRoutes.ts` + `src/controllers/{manifest,catalog,meta}Controller.ts` + `src/services/{catalog,meta}/*` | Keep HTTP shaping in controllers; keep NZBDav lookup logic in services. |
-| `1353-3635` | Main stream pipeline (ID normalization, manager/newznab/easynews searches, triage ranking, response shaping) | `src/controllers/streamController.ts` + `src/services/stream/*` + `src/domain/stream/*` + `src/integrations/*` | Highest-risk extraction; split by pipeline stage and protect with `STREAM_V2_ENABLED` + same-output fixtures. |
+| `1353-3635` | Main stream pipeline (ID normalization, manager/newznab/easynews searches, triage ranking, response shaping) | `src/controllers/streamController.ts` + `src/services/stream/*` + `src/domain/stream/*` + `src/integrations/*` | Highest-risk extraction; track explicitly with `V2-122..V2-125` and protect with `STREAM_V2_ENABLED` + same-output fixtures. |
 | `3636-3825` | Easynews NZB and NZBDav stream proxy endpoints | `src/controllers/{easynews,nzbdav}Controller.ts` + `src/integrations/{easynews,nzbdav}/*` | Treat as integration-client endpoints; keep request validation in controllers. |
 | `3826-3871` | HTTP server lifecycle + startup Newznab caps warmup | `src/app/httpServer.ts` + `src/app/startupTasks.ts` | Isolate startup tasks for easier testing and rollback of startup behaviors. |
 
@@ -35,6 +35,28 @@ Map major `server.js` sections to target layers so extraction work can happen in
 2. Extract manifest/catalog/meta handlers (`1208-1351`).
 3. Extract easynews/nzbdav direct endpoints (`3636-3825`).
 4. Extract stream pipeline in stages (`1353-3635`) with fixture parity checks at each PR.
+
+The risk order above is implemented in M2 CSV row order via:
+
+1. `V2-126..V2-129` (admin route/controller extraction + parity checks)
+2. `V2-037` (manifest/catalog/meta extraction)
+3. `V2-038` (easynews/nzbdav endpoint extraction)
+4. `V2-070`, `V2-122..V2-125` (stream pipeline decomposition/cutover)
+
+## Stream High-Risk Tracking (M2)
+
+- `V2-122`: Extract stream HTTP controller from `server.js` into `src/controllers/stream/*`.
+- `V2-123`: Extract pure stream decision logic to `src/domain/stream/*`.
+- `V2-124`: Extract stream external-call adapters to `src/integrations/stream/*`.
+- `V2-125`: Wire end-to-end layered stream path behind `STREAM_V2_ENABLED` and verify parity + rollback drill.
+
+## Admin Extraction Tracking (M2)
+
+- `V2-126`: Extract admin route registration from `server.js` to routes modules.
+- `V2-127`: Extract admin `/admin/api/config` handler to admin controller module.
+- `V2-128`: Extract admin `/admin/api/test-connections` handler to admin controller module.
+- `V2-129`: Add admin extraction parity checks (fixtures/smoke behavior equivalence).
+- `V2-GATE-M2`: Close M2 only after admin + stream extraction tasks and rollback evidence pass.
 
 ## Verification Requirements per Slice
 
