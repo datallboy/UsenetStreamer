@@ -34,7 +34,7 @@ async function waitForServer(baseUrl, timeoutMs = 15000) {
   while (Date.now() - start < timeoutMs) {
     try {
       const res = await fetch(`${baseUrl}/manifest.json`);
-      if (res.status === 200) return;
+      if (res.status === 200 || res.status === 401) return;
       lastError = new Error(`manifest probe returned ${res.status}`);
     } catch (error) {
       lastError = error;
@@ -151,7 +151,18 @@ async function verifyHttpFixture(repoRoot, fixturePath) {
     await waitForServer(baseUrl);
 
     for (const expectedCase of fixture.cases || []) {
-      const response = await fetch(`${baseUrl}${expectedCase.path}`, { method: expectedCase.method || 'GET' });
+      const requestOptions = {
+        method: expectedCase.method || 'GET',
+        headers: expectedCase.requestHeaders || {},
+      };
+      if (expectedCase.requestBody !== undefined) {
+        requestOptions.body = JSON.stringify(expectedCase.requestBody);
+        if (!requestOptions.headers['content-type'] && !requestOptions.headers['Content-Type']) {
+          requestOptions.headers['content-type'] = 'application/json';
+        }
+      }
+
+      const response = await fetch(`${baseUrl}${expectedCase.path}`, requestOptions);
       const body = await response.json().catch(() => null);
       const normalizedBody = deepReplaceBaseUrl(body, baseUrl);
       const diffs = [];

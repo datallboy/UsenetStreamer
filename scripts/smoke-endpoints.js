@@ -33,7 +33,7 @@ async function waitForReady(baseUrl, timeoutMs) {
   while (Date.now() - start < timeoutMs) {
     try {
       const res = await fetch(`${baseUrl}/manifest.json`);
-      if (res.status === 200) {
+      if (res.status === 200 || res.status === 401) {
         return;
       }
       lastError = new Error(`manifest probe returned ${res.status}`);
@@ -51,16 +51,18 @@ function shapeOk(body, shapeCheck) {
 }
 
 async function runChecks(baseUrl) {
+  const adminToken = 'smoke-secret';
+  const addonTokenPath = '/smoke-secret';
   const checks = [
     {
       name: 'manifest',
-      url: `${baseUrl}/manifest.json`,
+      url: `${baseUrl}${addonTokenPath}/manifest.json`,
       expectedStatus: 200,
       shapeCheck: (body) => body && Array.isArray(body.resources) && body.id && body.name,
     },
     {
       name: 'catalog',
-      url: `${baseUrl}/catalog/movie/nzbdav_completed.json`,
+      url: `${baseUrl}${addonTokenPath}/catalog/movie/nzbdav_completed.json`,
       // In smoke runs we force STREAMING_MODE=native.
       // In native mode, catalog endpoints are intentionally disabled and must return 404.
       expectedStatus: 404,
@@ -68,7 +70,7 @@ async function runChecks(baseUrl) {
     },
     {
       name: 'meta',
-      url: `${baseUrl}/meta/movie/nzbdav:test-id.json`,
+      url: `${baseUrl}${addonTokenPath}/meta/movie/nzbdav:test-id.json`,
       // In smoke runs we force STREAMING_MODE=native.
       // In native mode, meta endpoints are intentionally disabled and must return 404.
       expectedStatus: 404,
@@ -76,11 +78,52 @@ async function runChecks(baseUrl) {
     },
     {
       name: 'stream',
-      url: `${baseUrl}/stream/movie/bad-id.json`,
+      url: `${baseUrl}${addonTokenPath}/stream/movie/bad-id.json`,
       // "bad-id" does not match supported stream ID prefixes (tt/tvdb/tmdb/special ids),
       // so streamHandler must reject it with a 400 validation error.
       expectedStatus: 400,
       shapeCheck: (body) => body && typeof body.error === 'string',
+    },
+    {
+      name: 'admin-config-unauthorized',
+      url: `${baseUrl}/admin/api/config`,
+      expectedStatus: 401,
+      shapeCheck: (body) => body && typeof body.error === 'string',
+    },
+    {
+      name: 'admin-config-authorized',
+      url: `${baseUrl}/admin/api/config`,
+      expectedStatus: 200,
+      headers: {
+        Authorization: `Token ${adminToken}`,
+      },
+      shapeCheck: (body) => body
+        && body.values
+        && typeof body.manifestUrl === 'string'
+        && typeof body.runtimeEnvPath === 'string'
+        && Array.isArray(body.newznabPresets),
+    },
+    {
+      name: 'admin-test-connections-invalid-payload',
+      url: `${baseUrl}/admin/api/test-connections`,
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${adminToken}`,
+      },
+      body: {},
+      expectedStatus: 400,
+      shapeCheck: (body) => body && body.error === 'Invalid payload: expected "type" and "values"',
+    },
+    {
+      name: 'admin-test-connections-unknown-type',
+      url: `${baseUrl}/admin/api/test-connections`,
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${adminToken}`,
+      },
+      body: { type: 'unknown-type', values: {} },
+      expectedStatus: 400,
+      shapeCheck: (body) => body && body.error === 'Unknown test type: unknown-type',
     },
   ];
 
@@ -91,7 +134,20 @@ async function runChecks(baseUrl) {
     let pass = false;
     let detail = '';
     try {
-      const response = await fetch(check.url);
+      const requestOptions = {
+        method: check.method || 'GET',
+        headers: {
+          ...(check.headers || {}),
+        },
+      };
+      if (check.body !== undefined) {
+        requestOptions.body = JSON.stringify(check.body);
+        if (!requestOptions.headers['content-type'] && !requestOptions.headers['Content-Type']) {
+          requestOptions.headers['content-type'] = 'application/json';
+        }
+      }
+
+      const response = await fetch(check.url, requestOptions);
       status = response.status;
       body = await response.json().catch(() => null);
       const statusOk = status === check.expectedStatus;
@@ -141,6 +197,7 @@ async function main() {
       NEWZNAB_ENABLED: 'false',
       EASYNEWS_ENABLED: 'false',
       NZB_TRIAGE_ENABLED: 'false',
+      ADDON_SHARED_SECRET: 'smoke-secret',
       CONFIG_DIR: tempConfigDir,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

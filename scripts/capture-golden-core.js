@@ -51,7 +51,7 @@ async function waitForServer(baseUrl, timeoutMs = 15000) {
   while (Date.now() - start < timeoutMs) {
     try {
       const res = await fetch(`${baseUrl}/manifest.json`);
-      if (res.status === 200) return;
+      if (res.status === 200 || res.status === 401) return;
       lastError = new Error(`manifest probe returned ${res.status}`);
     } catch (error) {
       lastError = error;
@@ -92,12 +92,25 @@ async function captureHttpFixture(repoRoot, fixtureConfig) {
     await waitForServer(baseUrl);
     const results = [];
     for (const entry of fixtureConfig.cases) {
-      const response = await fetch(`${baseUrl}${entry.path}`, { method: entry.method || 'GET' });
+      const requestOptions = {
+        method: entry.method || 'GET',
+        headers: entry.requestHeaders || {},
+      };
+      if (entry.requestBody !== undefined) {
+        requestOptions.body = JSON.stringify(entry.requestBody);
+        if (!requestOptions.headers['content-type'] && !requestOptions.headers['Content-Type']) {
+          requestOptions.headers['content-type'] = 'application/json';
+        }
+      }
+
+      const response = await fetch(`${baseUrl}${entry.path}`, requestOptions);
       const body = await response.json().catch(() => null);
       results.push({
         id: entry.id,
         method: entry.method || 'GET',
         path: entry.path,
+        requestHeaders: entry.requestHeaders || undefined,
+        requestBody: entry.requestBody !== undefined ? entry.requestBody : undefined,
         status: response.status,
         body: deepReplaceBaseUrl(body, baseUrl),
       });
@@ -271,6 +284,34 @@ async function main() {
         { id: 'manifest', method: 'GET', path: '/manifest.json' },
         { id: 'catalog-nzbdav-missing-config', method: 'GET', path: '/catalog/movie/nzbdav_completed.json' },
         { id: 'meta-nzbdav-missing-config', method: 'GET', path: '/meta/movie/nzbdav:test-id.json' },
+      ],
+    },
+    {
+      profile: 'admin-baseline',
+      env: {
+        ADDON_SHARED_SECRET: 'fixture-secret',
+        STREAMING_MODE: 'native',
+        INDEXER_MANAGER: 'none',
+        NEWZNAB_ENABLED: 'false',
+        EASYNEWS_ENABLED: 'false',
+        NZB_TRIAGE_ENABLED: 'false',
+      },
+      cases: [
+        { id: 'admin-config-unauthorized', method: 'GET', path: '/admin/api/config' },
+        {
+          id: 'admin-test-connections-invalid-payload',
+          method: 'POST',
+          path: '/admin/api/test-connections',
+          requestHeaders: { Authorization: 'Token fixture-secret' },
+          requestBody: {},
+        },
+        {
+          id: 'admin-test-connections-unknown-type',
+          method: 'POST',
+          path: '/admin/api/test-connections',
+          requestHeaders: { Authorization: 'Token fixture-secret' },
+          requestBody: { type: 'unknown-type', values: {} },
+        },
       ],
     },
   ];

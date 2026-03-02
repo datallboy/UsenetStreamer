@@ -1,0 +1,55 @@
+{
+  "fixtureVersion": 2,
+  "fixtureType": "http-endpoints",
+  "profile": "admin-baseline",
+  "generatedAt": "2026-03-02T00:00:00.000Z",
+  "baseUrl": "{{BASE_URL}}",
+  "env": {
+    "ADDON_SHARED_SECRET": "fixture-secret",
+    "STREAMING_MODE": "native",
+    "INDEXER_MANAGER": "none",
+    "NEWZNAB_ENABLED": "false",
+    "EASYNEWS_ENABLED": "false",
+    "NZB_TRIAGE_ENABLED": "false"
+  },
+  "cases": [
+    {
+      "id": "admin-config-unauthorized",
+      "method": "GET",
+      "path": "/admin/api/config",
+      "status": 401,
+      "body": {
+        "error": "Unauthorized: invalid or missing addon token"
+      }
+    },
+    {
+      "id": "admin-test-connections-invalid-payload",
+      "method": "POST",
+      "path": "/admin/api/test-connections",
+      "requestHeaders": {
+        "Authorization": "Token fixture-secret"
+      },
+      "requestBody": {},
+      "status": 400,
+      "body": {
+        "error": "Invalid payload: expected \"type\" and \"values\""
+      }
+    },
+    {
+      "id": "admin-test-connections-unknown-type",
+      "method": "POST",
+      "path": "/admin/api/test-connections",
+      "requestHeaders": {
+        "Authorization": "Token fixture-secret"
+      },
+      "requestBody": {
+        "type": "unknown-type",
+        "values": {}
+      },
+      "status": 400,
+      "body": {
+        "error": "Unknown test type: unknown-type"
+      }
+    }
+  ]
+}
