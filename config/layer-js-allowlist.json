@@ -13,6 +13,7 @@
     "src/controllers/stream/streamController.js",
     "src/domain/stream/rankStreamResults.js",
     "src/domain/stream/resolveStreamIdentifiers.js",
+    "src/integrations/stream/createStreamIntegrations.js",
     "src/routes/addon/registerDownloadRoutes.js",
     "src/routes/admin/registerAdminRoutes.js",
     "src/routes/addon/registerAddonRoutes.js",

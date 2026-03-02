@@ -66,6 +66,7 @@ const catalogMetaService = require('./src/services/addon/catalogMetaService');
 const { registerCoreRoutes } = require('./src/app/registerCoreRoutes');
 const { registerFeatureRoutes } = require('./src/app/registerFeatureRoutes');
 const { createHttpServerLifecycle } = require('./src/app/httpServerLifecycle');
+const { createStreamIntegrations } = require('./src/integrations/stream/createStreamIntegrations');
 
 const app = express();
 let currentPort = Number(process.env.PORT || 7000);
@@ -74,6 +75,15 @@ const DEFAULT_ADDON_NAME = 'UsenetStreamer';
 const SERVER_HOST = '0.0.0.0';
 const DEDUPE_MAX_PUBLISH_DIFF_DAYS = 14;
 let PAID_INDEXER_TOKENS = new Set();
+
+const streamIntegrations = createStreamIntegrations({
+  indexerService,
+  newznabService,
+  easynewsService,
+  nzbdavService,
+  tmdbService,
+  tvdbService,
+});
 
 
 // Blocklist patterns for unplayable/unwanted release types
@@ -635,7 +645,7 @@ function rebuildRuntimeConfig({ log = true } = {}) {
   maybePrewarmSharedNntpPool();
   restartSharedPoolMonitor();
   const resolvedAddonBase = ADDON_BASE_URL || `http://${SERVER_HOST}:${currentPort}`;
-  easynewsService.reloadConfig({ addonBaseUrl: resolvedAddonBase, sharedSecret: ADDON_SHARED_SECRET });
+  streamIntegrations.easynews.reloadConfig({ addonBaseUrl: resolvedAddonBase, sharedSecret: ADDON_SHARED_SECRET });
 
   const portChanged = previousPort !== undefined && previousPort !== currentPort;
   if (log) {
@@ -777,7 +787,7 @@ function executeManagerPlanWithBackoff(plan) {
     console.warn(`${INDEXER_LOG_PREFIX} Skipping manager search during backoff (${remaining}s remaining)`);
     return Promise.resolve({ results: [], errors: [`manager backoff (${remaining}s remaining)`] });
   }
-  return indexerService.executeIndexerPlan(plan)
+  return streamIntegrations.indexer.executePlan(plan)
     .then((data) => ({ results: Array.isArray(data) ? data : [] }))
     .catch((error) => {
       if (INDEXER_MANAGER_BACKOFF_ENABLED) {
@@ -813,7 +823,7 @@ function executeNewznabPlan(plan) {
     });
   }
 
-  return newznabService.searchNewznabIndexers(plan, ACTIVE_NEWZNAB_CONFIGS, {
+  return streamIntegrations.newznab.searchIndexers(plan, ACTIVE_NEWZNAB_CONFIGS, {
     filterNzbOnly: NEWZNAB_FILTER_NZB_ONLY,
     debug: debugEnabled,
     logEndpoints: endpointLogEnabled,
@@ -1049,21 +1059,21 @@ async function streamHandler(req, res) {
   try {
     ensureAddonConfigured();
     if (INDEXER_MANAGER !== 'none') {
-      indexerService.ensureIndexerManagerConfigured();
+      streamIntegrations.indexer.ensureConfigured();
     }
     // Skip NZBDav config check in native streaming mode
     if (STREAMING_MODE !== 'native') {
-      nzbdavService.ensureNzbdavConfigured();
+      streamIntegrations.nzbdav.ensureConfigured();
     }
     triagePrewarmPromise = triggerRequestTriagePrewarm();
 
     if (incomingTmdbId && !incomingImdbId && !incomingTvdbId) {
-      if (!tmdbService.isConfigured()) {
+      if (!streamIntegrations.tmdb.isConfigured()) {
         res.status(400).json({ error: 'TMDb is not configured (enable TMDB and set API key).' });
         return;
       }
       const mediaType = type === 'movie' ? 'movie' : 'series';
-      const externalIds = await tmdbService.getExternalIds(incomingTmdbId, mediaType);
+      const externalIds = await streamIntegrations.tmdb.getExternalIds(incomingTmdbId, mediaType);
       if (externalIds?.imdbId) {
         incomingImdbId = externalIds.imdbId.startsWith('tt') ? externalIds.imdbId : `tt${externalIds.imdbId}`;
       }
@@ -1076,21 +1086,21 @@ async function streamHandler(req, res) {
       }
     }
 
-    if (type === 'movie' && !incomingTmdbId && incomingImdbId && tmdbService.isConfigured()) {
-      const tmdbFind = await tmdbService.findByExternalId(incomingImdbId, 'imdb_id');
+    if (type === 'movie' && !incomingTmdbId && incomingImdbId && streamIntegrations.tmdb.isConfigured()) {
+      const tmdbFind = await streamIntegrations.tmdb.findByExternalId(incomingImdbId, 'imdb_id');
       if (tmdbFind?.tmdbId && tmdbFind.mediaType === 'movie') {
         incomingTmdbId = String(tmdbFind.tmdbId);
       }
     }
 
-    if (type === 'series' && tvdbService.isConfigured()) {
+    if (type === 'series' && streamIntegrations.tvdb.isConfigured()) {
       if (incomingTvdbId && !incomingImdbId) {
-        const tvdbLookup = await tvdbService.getImdbIdForSeries(incomingTvdbId);
+        const tvdbLookup = await streamIntegrations.tvdb.getImdbIdForSeries(incomingTvdbId);
         if (tvdbLookup?.imdbId) {
           incomingImdbId = tvdbLookup.imdbId.startsWith('tt') ? tvdbLookup.imdbId : `tt${tvdbLookup.imdbId}`;
         }
       } else if (incomingImdbId && !incomingTvdbId) {
-        const tvdbLookup = await tvdbService.getTvdbIdForSeries(incomingImdbId);
+        const tvdbLookup = await streamIntegrations.tvdb.getTvdbIdForSeries(incomingImdbId);
         if (tvdbLookup?.tvdbId) {
           incomingTvdbId = tvdbLookup.tvdbId;
         }
@@ -1103,8 +1113,8 @@ async function streamHandler(req, res) {
         return;
       }
 
-      const categoryForType = nzbdavService.getNzbdavCategory(type);
-      const historyMap = await nzbdavService.fetchCompletedNzbdavHistory([categoryForType], Math.max(50, NZBDAV_HISTORY_CATALOG_LIMIT || 50));
+      const categoryForType = streamIntegrations.nzbdav.getCategory(type);
+      const historyMap = await streamIntegrations.nzbdav.fetchCompletedHistory([categoryForType], Math.max(50, NZBDAV_HISTORY_CATALOG_LIMIT || 50));
       const match = Array.from(historyMap.values()).find((entry) => String(entry.nzoId) === String(incomingNzbdavId));
       if (!match) {
         res.status(404).json({ error: 'NZBDav history entry not found.' });
@@ -1295,8 +1305,8 @@ async function streamHandler(req, res) {
     );
 
     // Check if we should use TMDb as primary metadata source
-    const tmdbConfig = tmdbService.getConfig();
-    const shouldUseTmdb = tmdbService.isConfigured() && incomingImdbId;
+    const tmdbConfig = streamIntegrations.tmdb.getConfig();
+    const shouldUseTmdb = streamIntegrations.tmdb.isConfigured() && incomingImdbId;
     const skipMetadataFetch = Boolean(cachedSearchMeta?.triageComplete);
 
     let tmdbMetadata = null;
@@ -1305,7 +1315,7 @@ async function streamHandler(req, res) {
     // Start TMDb fetch in background (don't await yet)
     if (shouldUseTmdb && !skipMetadataFetch) {
       console.log('[TMDB] Starting TMDb metadata fetch in background');
-      tmdbMetadataPromise = tmdbService.getMetadataAndTitles({
+      tmdbMetadataPromise = streamIntegrations.tmdb.getMetadataAndTitles({
         imdbId: incomingImdbId,
         type,
       }).then((result) => {
@@ -1328,7 +1338,7 @@ async function streamHandler(req, res) {
     const needsCinemeta = !skipMetadataFetch && !shouldUseTmdb && (
       needsStrictSeriesTvdb
       || needsRelaxedMetadata
-      || easynewsService.requiresCinemetaMetadata(isSpecialRequest)
+      || streamIntegrations.easynews.requiresCinemetaMetadata(isSpecialRequest)
     );
 
     let cinemetaPromise = null;
@@ -1604,7 +1614,7 @@ async function streamHandler(req, res) {
         }
       }
 
-      if (type === 'series' && !tvdbService.isConfigured() && cinemetaMeta && !metaIds.tvdb) {
+      if (type === 'series' && !streamIntegrations.tvdb.isConfigured() && cinemetaMeta && !metaIds.tvdb) {
         const cinemetaTvdbId = normalizeNumericId(
           cinemetaMeta?.ids?.tvdb
           || cinemetaMeta?.tvdb_id
@@ -1712,7 +1722,7 @@ async function streamHandler(req, res) {
             console.log(`${INDEXER_LOG_PREFIX} Skipping year-only text plan (no title)`);
           } else {
             const rawFallback = textQueryCandidate.trim();
-            textQueryFallbackValue = tmdbService.normalizeToAscii(rawFallback);
+            textQueryFallbackValue = streamIntegrations.tmdb.normalizeToAscii(rawFallback);
             if (textQueryFallbackValue && textQueryFallbackValue !== rawFallback) {
               console.log(`${INDEXER_LOG_PREFIX} Normalized text query to ASCII`, { original: rawFallback, normalized: textQueryFallbackValue });
             }
@@ -1774,7 +1784,7 @@ async function streamHandler(req, res) {
         console.log(`${INDEXER_LOG_PREFIX} Using manager default indexer selection`);
       }
 
-      if (easynewsService.isEasynewsEnabled()) {
+      if (streamIntegrations.easynews.isEnabled()) {
         const easynewsStrictMode = !isSpecialRequest && (type === 'movie' || type === 'series');
         let easynewsRawQuery = null;
 
@@ -1869,7 +1879,7 @@ async function streamHandler(req, res) {
       if (easynewsSearchParams) {
         console.log('[EASYNEWS] Starting search in parallel');
         easynewsSearchStartTs = Date.now();
-        easynewsPromise = easynewsService.searchEasynews(easynewsSearchParams)
+        easynewsPromise = streamIntegrations.easynews.search(easynewsSearchParams)
           .then((results) => {
             if (Array.isArray(results) && results.length > 0) {
               console.log('[EASYNEWS] Retrieved results', { count: results.length, query: easynewsSearchParams.rawQuery });
@@ -2265,7 +2275,7 @@ async function streamHandler(req, res) {
       if (easynewsPromise) {
         console.log('[EASYNEWS] Waiting for parallel Easynews search to complete');
         const easynewsElapsedMs = Date.now() - (easynewsSearchStartTs || easynewsWaitStartTs);
-        const remainingMs = Math.max(0, easynewsService.EASYNEWS_SEARCH_STANDALONE_TIMEOUT_MS - easynewsElapsedMs);
+        const remainingMs = Math.max(0, streamIntegrations.easynews.getStandaloneTimeoutMs() - easynewsElapsedMs);
         let easynewsResults = [];
         try {
           easynewsResults = await Promise.race([
@@ -2445,14 +2455,14 @@ async function streamHandler(req, res) {
         if (
           derived
           && isTriageFinalStatus(derived.status)
-          && indexerService.canShareDecision(derived.publishDateMs, candidate.publishDateMs)
+          && streamIntegrations.indexer.canShareDecision(derived.publishDateMs, candidate.publishDateMs)
         ) {
           return true;
         }
       }
       return false;
     };
-    const categoryForType = STREAMING_MODE !== 'native' ? nzbdavService.getNzbdavCategory(type) : null;
+    const categoryForType = STREAMING_MODE !== 'native' ? streamIntegrations.nzbdav.getCategory(type) : null;
     const triageCandidatesToRun = triageEligibleResults.filter((candidate) => !candidateHasConclusiveDecision(candidate));
     const shouldSkipTriageForRequest = requestLacksIdentifiers || isSpecialRequest;
     const shouldAttemptTriage = triageCandidatesToRun.length > 0 && !requestedDisable && !shouldSkipTriageForRequest && (requestedEnable || TRIAGE_ENABLED);
@@ -2618,7 +2628,7 @@ async function streamHandler(req, res) {
     let historyByTitle = new Map();
     if (STREAMING_MODE !== 'native') {
       try {
-        historyByTitle = await nzbdavService.fetchCompletedNzbdavHistory([categoryForType]);
+        historyByTitle = await streamIntegrations.nzbdav.fetchCompletedHistory([categoryForType]);
         if (historyByTitle.size > 0) {
           console.log(`[NZBDAV] Loaded ${historyByTitle.size} completed NZBs for instant playback detection (category=${categoryForType})`);
         }
@@ -2692,7 +2702,7 @@ async function streamHandler(req, res) {
       if (result.easynewsPayload) baseParams.set('easynewsPayload', result.easynewsPayload);
       if (result._sourceType) baseParams.set('sourceType', result._sourceType);
 
-      const cacheKey = nzbdavService.buildNzbdavCacheKey(result.downloadUrl, categoryForType, requestedEpisode);
+      const cacheKey = streamIntegrations.nzbdav.buildCacheKey(result.downloadUrl, categoryForType, requestedEpisode);
       // Cache entries are managed internally by the cache module
       const normalizedTitle = normalizeReleaseTitle(result.title);
       const historySlot = normalizedTitle ? historyByTitle.get(normalizedTitle) : null;
@@ -2702,7 +2712,7 @@ async function streamHandler(req, res) {
       const fallbackTitleKey = normalizedTitle;
       const fallbackTriageInfo = !directTriageInfo && fallbackTitleKey ? triageTitleMap.get(fallbackTitleKey) : null;
       const fallbackAllowed = fallbackTriageInfo
-        ? indexerService.canShareDecision(fallbackTriageInfo.publishDateMs, result.publishDateMs)
+        ? streamIntegrations.indexer.canShareDecision(fallbackTriageInfo.publishDateMs, result.publishDateMs)
         : false;
       const triageInfo = directTriageInfo || (fallbackAllowed ? fallbackTriageInfo : null);
       const triageApplied = Boolean(directTriageInfo);
@@ -3191,7 +3201,7 @@ async function streamHandler(req, res) {
               if (cachedEntry) {
                 console.log('[CACHE] Using verified NZB payload for prefetch', { downloadUrl: prefetchCandidate.downloadUrl });
               }
-              const added = await nzbdavService.addNzbToNzbdav({
+              const added = await streamIntegrations.nzbdav.addNzb({
                 downloadUrl: prefetchCandidate.downloadUrl,
                 cachedEntry,
                 category: prefetchCandidate.category,
@@ -3293,7 +3303,7 @@ startHttpServer();
 
 // Fetch real caps for all enabled indexers in the background at startup
 if (NEWZNAB_ENABLED && ACTIVE_NEWZNAB_CONFIGS.length > 0) {
-  newznabService.refreshCapsCache(ACTIVE_NEWZNAB_CONFIGS, { timeoutMs: 12000 })
+  streamIntegrations.newznab.refreshCapsCache(ACTIVE_NEWZNAB_CONFIGS, { timeoutMs: 12000 })
     .then((capsCache) => {
       console.log('[NEWZNAB][CAPS] Startup caps loaded', Object.keys(capsCache));
       if (Object.keys(capsCache).length > 0) {
