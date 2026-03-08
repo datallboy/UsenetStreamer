@@ -23,6 +23,7 @@ const EventEmitter = require('events');
 const POLL_INTERVAL_MS = 200;
 const DEFAULT_READY_TIMEOUT_MS = 120000;
 const SESSION_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
+const DEFAULT_MAX_ATTEMPTS = 12;
 
 // Active sessions keyed by contentKey (e.g., "movie:tt1234567" or "series:tt1234567:1:1")
 const activeSessions = new Map();
@@ -48,6 +49,7 @@ class AutoAdvanceSession extends EventEmitter {
     this.queueToNzbdav = options.queueToNzbdav;
     this.getCachedEntry = options.getCachedEntry || (() => null);
     this.backupCount = options.backupCount ?? 0;
+    this.maxAttempts = Number.isFinite(options.maxAttempts) ? Math.max(1, Math.floor(options.maxAttempts)) : DEFAULT_MAX_ATTEMPTS;
     this.requestedEpisode = options.requestedEpisode || null;
 
     // State
@@ -59,6 +61,7 @@ class AutoAdvanceSession extends EventEmitter {
     this.closed = false;
     this.createdAt = Date.now();
     this.activated = false;       // nothing queued until activated
+    this.attemptedCount = 0;      // how many candidates have been queued for NZBDav processing
   }
 
   get activeCount() {
@@ -232,6 +235,13 @@ class AutoAdvanceSession extends EventEmitter {
   }
 
   _allExhausted() {
+    if (this.attemptedCount >= this.maxAttempts && this.processing.size === 0) {
+      // Reached processing cap and nothing in flight.
+      for (const url of this.readyQueue) {
+        if (!this.failedUrls.has(url)) return false;
+      }
+      return true;
+    }
     if (this.cursor < this.candidates.length) return false;
     if (this.processing.size > 0) return false;
     // All queued, none processing — check if any non-failed ready slots remain
@@ -257,6 +267,7 @@ class AutoAdvanceSession extends EventEmitter {
 
   _queueNext() {
     if (this.closed) return;
+    if (this.attemptedCount >= this.maxAttempts) return;
     if (this.cursor >= this.candidates.length) return;
 
     const candidate = this.candidates[this.cursor];
@@ -270,6 +281,7 @@ class AutoAdvanceSession extends EventEmitter {
 
     this.processing.add(candidate.downloadUrl);
     this.slots.set(candidate.downloadUrl, { status: 'processing' });
+    this.attemptedCount += 1;
 
     this._processCandidate(candidate).then((data) => {
       this.processing.delete(candidate.downloadUrl);

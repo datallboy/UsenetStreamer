@@ -1085,10 +1085,8 @@
     const needsNntp = ['health-check', 'health-check-auto-advance', 'smart-play-only', 'smart-play'].includes(mode);
     const hasAutoAdvance = ['auto-advance', 'health-check-auto-advance', 'smart-play'].includes(mode);
 
-    // Show/hide NNTP credentials section
-    if (healthCheckCredentialsGroup) {
-      healthCheckCredentialsGroup.classList.toggle('hidden', !needsNntp);
-    }
+    // Show/hide NNTP credentials section — always visible now
+    // (needed for Zyclops even in no-protection/auto-advance modes)
 
     // Show/hide auto-advance strategy dropdown (only for modes with auto-advance)
     if (autoAdvanceStrategyLabel) {
@@ -1274,9 +1272,25 @@
     updateHealthPaidWarning();
   }
 
+  function hasAnyZyclopsEnabled() {
+    return getNewznabRows().some((row) => {
+      const zyclopsToggle = row.querySelector('[data-field="ZYCLOPS"]');
+      return Boolean(zyclopsToggle?.checked);
+    });
+  }
+
   async function saveConfiguration(event) {
     event.preventDefault();
     saveStatus.textContent = '';
+
+    // Block save if any Zyclops is enabled but NNTP host is empty
+    if (hasAnyZyclopsEnabled()) {
+      const nntpHost = configForm.querySelector('[name="NZB_TRIAGE_NNTP_HOST"]');
+      if (!nntpHost?.value?.trim()) {
+        saveStatus.textContent = 'Error: Zyclops requires your Usenet Provider Host to be set in the NNTP Health Check Credentials section.';
+        return;
+      }
+    }
 
     try {
       markSaving(true);
