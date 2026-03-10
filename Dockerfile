@@ -1,8 +1,11 @@
 # Use a lightweight Node.js image
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Set working directory inside container
 WORKDIR /usr/src/app
+
+# Patch Alpine system packages (openssl etc.)
+RUN apk upgrade --no-cache
 
 # Install dependencies
 COPY package*.json ./
